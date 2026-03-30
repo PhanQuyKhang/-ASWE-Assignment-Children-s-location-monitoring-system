@@ -3,18 +3,19 @@ const app = express();
 
 app.use(express.json());
 
-app.post('/webhook', (req, res) => {
-    console.log("====================================");
-    console.log("🎉 TUYỆT VỜI! ĐÃ NHẬN ĐƯỢC DỮ LIỆU TỪ ARDUINO!");
-    console.log("Nội dung gửi lên:", req.body);
-    console.log("====================================");
+// ✅ for Arduino validation
+app.get('/webhook', (req, res) => {
+    res.send('Webhook OK');
+});
 
+// ✅ actual webhook
+app.post('/webhook', (req, res) => {
+    console.log("DATA:", req.body);
     res.status(200).send("OK");
 });
 
-// ✅ FIX HERE
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-    console.log(`🚀 Server đang chạy tại cổng ${PORT}`);
+    console.log(`Server running on ${PORT}`);
 });
