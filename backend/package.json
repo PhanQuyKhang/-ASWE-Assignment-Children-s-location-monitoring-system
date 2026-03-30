@@ -11,8 +11,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-
-    
+    "@neondatabase/serverless": "^1.0.2",
     "arduino-iot-js": "^0.9.7",
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",
