@@ -6,9 +6,9 @@ function startHeartbeatMonitor() {
     try {
       const updatedDevices = await sql`
         UPDATE device
-        SET status = false
+        SET status = "NOSIGNAL"
         WHERE now() - last_updated > interval '2 minutes'
-        AND status = true
+        AND status = "ACTIVE"
         RETURNING id;
       `;
 

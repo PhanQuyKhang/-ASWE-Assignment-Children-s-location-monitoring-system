@@ -9,11 +9,11 @@ const LogService = {
         if (!device){
             throw new Error("Invalid Device ID"); 
         }
+        if (device.status == "INACTIVE"){
+            throw new Error("Device inactive"); 
+        }
 
         const lastLog = await LogModel.getLatestbyID(data.device_id);
-        console.log("HIII------------------------------------------------");
-        console.log(lastLog);
-        console.log("HIII------------------------------------------------");
         
         if (lastLog) {
             const timeDiff = Math.abs(
@@ -28,11 +28,16 @@ const LogService = {
             }
         }
 
-        //furthure more logic?
-        const log_id = await LogModel.create(data);
-        console.log(log_id);
-        //Later on, the Websocket event
-        //Later on, the Boundary logic
+        const [log_id, updateResult] = await Promise.all([
+            LogModel.create(data),
+            DeviceModel.updateDevice(data)
+        ]);
+        if (log_id && updateResult){
+            //Later on, the Websocket event
+            //Later on, the Boundary logic
+        } else {
+            throw new Error("Log create and update failed"); 
+        }
 
         return log_id;
     },
