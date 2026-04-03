@@ -34,6 +34,18 @@ class Device {
 
         return result || null;
     }
+
+    static async addDevice(data) {
+        const { deviceId, userId, childName } = data;
+        
+        // Execute the insert query using Neon serverless sql template
+        const [result] = await sql`
+            INSERT INTO devices (device_id, user_id, child_name)
+            VALUES (${deviceId}, ${userId}, ${childName})
+            RETURNING *;
+        `;
+        return result || null;
+    }
 }
 
 

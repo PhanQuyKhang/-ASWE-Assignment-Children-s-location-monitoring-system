@@ -1,12 +1,15 @@
 require("dotenv").config();
 const express = require('express');
+const cors = require('cors'); // Ensure CORS is added to allow frontend requests
 const LogRouter = require('./routes/LogRoute');
+const DeviceRouter = require('./routes/DeviceRoute'); // IMPORT NEW ROUTE
 
 const { sql, testConnection } = require('./database/connection'); 
 
 const startHeartbeatMonitor = require('./Cron/DeviceHeartbeat.js');
 
 const app = express();
+app.use(cors()); // ALLOW REACT TO CONNECT
 app.use(express.json());
 
 
@@ -14,6 +17,7 @@ app.use(express.json());
 //----------------------------ROUTES-------------------------------------------
 
 app.use('/log', LogRouter);
+app.use('/device', DeviceRouter);
 
 //----------------------------SERVER-------------------------------------------
 
