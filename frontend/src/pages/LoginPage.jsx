@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
+import GoogleSignInButton from '../components/GoogleSignInButton';
 import useAuth from '../hooks/useAuth';
 
 function getErrorMessage(error) {
@@ -37,23 +38,22 @@ export default function LoginPage() {
       <section className="auth-hero">
         <div className="brand-chip">
           <span className="brand-dot" />
-          CLMS PARENT APP
+          CLMS
         </div>
-        <h1>Track your child in real time, safely and simply.</h1>
+        <h1>Welcome back.</h1>
         <p>
-          Fast login, clear alerts, and a trusted green-zone dashboard inspired by modern
-          mobility apps.
+          Sign in to manage your child&apos;s safety, live location, and safe boundaries.
         </p>
         <div className="auth-points">
-          <span>Live location updates from child phone</span>
-          <span>Instant boundary-exit notifications</span>
-          <span>Simple profile and family management</span>
+          <span>Secure account access</span>
+          <span>Quick password recovery</span>
+          <span>Google account sign-in</span>
         </div>
       </section>
 
       <form className="auth-card" onSubmit={handleSubmit}>
-        <h2>Welcome back, Parent</h2>
-        <p className="auth-sub">Log in to continue monitoring and alert controls.</p>
+        <h2>Log in</h2>
+        <p className="auth-sub">Use your email and password, or continue with Google.</p>
 
         <div className="form-grid">
           <div className="field">
@@ -81,8 +81,14 @@ export default function LoginPage() {
           <button className="btn btn-brand btn-block" type="submit" disabled={submitting}>
             {submitting ? 'Signing in...' : 'Log in'}
           </button>
+
+          <div className="divider-text">or</div>
+          <GoogleSignInButton />
         </div>
 
+        <p className="switch-text">
+          Forgot your password? <Link to="/forgot-password">Reset it here</Link>
+        </p>
         <p className="switch-text">
           No account yet? <Link to="/signup">Create account</Link>
         </p>

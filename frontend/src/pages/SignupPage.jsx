@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
+import GoogleSignInButton from '../components/GoogleSignInButton';
 import useAuth from '../hooks/useAuth';
 
 function getErrorMessage(error) {
@@ -43,7 +44,7 @@ export default function SignupPage() {
       <section className="auth-hero">
         <div className="brand-chip">
           <span className="brand-dot" />
-          CLMS ONBOARDING
+          CLMS
         </div>
         <h1>Create your family safety workspace.</h1>
         <p>
@@ -59,7 +60,7 @@ export default function SignupPage() {
 
       <form className="auth-card" onSubmit={handleSubmit}>
         <h2>Create Parent Account</h2>
-        <p className="auth-sub">Fill in your details to start tracking and notifications.</p>
+        <p className="auth-sub">Fill in your details or continue with Google.</p>
 
         <div className="form-grid">
           <div className="inline-two">
@@ -116,6 +117,9 @@ export default function SignupPage() {
           <button className="btn btn-brand btn-block" type="submit" disabled={submitting}>
             {submitting ? 'Creating account...' : 'Sign up'}
           </button>
+
+          <div className="divider-text">or</div>
+          <GoogleSignInButton />
         </div>
 
         <p className="switch-text">
