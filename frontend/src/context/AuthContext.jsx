@@ -4,23 +4,15 @@ import api from '../services/api';
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const [token, setToken] = useState(localStorage.getItem('clms_token'));
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function bootstrapSession() {
-      if (!token) {
-        setLoading(false);
-        return;
-      }
-
       try {
         const response = await api.get('/auth/profile');
         setUser(response.data.user);
       } catch {
-        localStorage.removeItem('clms_token');
-        setToken(null);
         setUser(null);
       } finally {
         setLoading(false);
@@ -28,20 +20,16 @@ export function AuthProvider({ children }) {
     }
 
     bootstrapSession();
-  }, [token]);
+  }, []);
 
   async function signup(payload) {
     const response = await api.post('/auth/signup', payload);
-    localStorage.setItem('clms_token', response.data.token);
-    setToken(response.data.token);
     setUser(response.data.user);
     return response.data;
   }
 
   async function login(payload) {
     const response = await api.post('/auth/login', payload);
-    localStorage.setItem('clms_token', response.data.token);
-    setToken(response.data.token);
     setUser(response.data.user);
     return response.data;
   }
@@ -52,30 +40,43 @@ export function AuthProvider({ children }) {
     return response.data;
   }
 
+  async function requestPasswordReset(email) {
+    const response = await api.post('/auth/password-reset/request', { email });
+    return response.data;
+  }
+
+  async function confirmPasswordReset(token, password) {
+    const response = await api.post('/auth/password-reset/confirm', { token, password });
+    return response.data;
+  }
+
+  async function changePassword(payload) {
+    const response = await api.post('/auth/change-password', payload);
+    return response.data;
+  }
+
   async function logout() {
     try {
-      if (token) {
-        await api.post('/auth/logout');
-      }
+      await api.post('/auth/logout');
     } finally {
-      localStorage.removeItem('clms_token');
-      setToken(null);
       setUser(null);
     }
   }
 
   const value = useMemo(
     () => ({
-      token,
       user,
       loading,
-      isAuthenticated: Boolean(token && user),
+      isAuthenticated: Boolean(user),
       signup,
       login,
       logout,
       updateProfile,
+      requestPasswordReset,
+      confirmPasswordReset,
+      changePassword,
     }),
-    [token, user, loading]
+    [user, loading]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

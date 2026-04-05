@@ -39,17 +39,17 @@ export default function ProfilePage() {
         <div>
           <div className="brand-chip">
             <span className="brand-dot" />
-            ACCOUNT SETTINGS
+            ACCOUNT MANAGEMENT
           </div>
-          <h1>Edit Profile</h1>
-          <p>Keep your parent contact information up-to-date.</p>
+          <h1>Manage Account</h1>
+          <p>Keep your parent details up to date.</p>
         </div>
         <button
           className="btn btn-ghost"
           onClick={logout}
           type="button"
         >
-          Log out
+          Sign out
         </button>
       </header>
 
@@ -78,7 +78,7 @@ export default function ProfilePage() {
           </div>
 
           <div className="field">
-            <label>Phone</label>
+            <label>Phone number</label>
             <input
               value={form.phone}
               onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))}

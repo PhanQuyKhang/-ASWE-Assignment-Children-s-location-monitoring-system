@@ -53,8 +53,57 @@ function validateProfilePayload(data) {
   return { fname, lname, phone };
 }
 
+function validatePasswordResetRequestPayload(data) {
+  const email = String(data.email || '').trim().toLowerCase();
+
+  if (!EMAIL_REGEX.test(email)) {
+    throw new Error('Invalid email');
+  }
+
+  return { email };
+}
+
+function validatePasswordResetConfirmPayload(data) {
+  const token = String(data.token || '').trim();
+  const password = String(data.password || '');
+
+  if (!token) {
+    throw new Error('Reset token is required');
+  }
+
+  if (password.length < 8) {
+    throw new Error('Password must be at least 8 characters');
+  }
+
+  return { token, password };
+}
+
+function validateChangePasswordPayload(data) {
+  const newPassword = String(data.newPassword || '');
+
+  if (newPassword.length < 8) {
+    throw new Error('New password must be at least 8 characters');
+  }
+
+  return { newPassword };
+}
+
+function validateGoogleLoginPayload(data) {
+  const idToken = String(data.idToken || '').trim();
+
+  if (!idToken) {
+    throw new Error('Google token is required');
+  }
+
+  return { idToken };
+}
+
 module.exports = {
   validateSignupPayload,
   validateLoginPayload,
   validateProfilePayload,
+  validatePasswordResetRequestPayload,
+  validatePasswordResetConfirmPayload,
+  validateChangePasswordPayload,
+  validateGoogleLoginPayload,
 };
