@@ -1,8 +1,8 @@
 const LogModel = require('../models/LogModel')
 const DeviceModel = require('../models/DeviceModel')
 // const WebSocketService = require('../services/WebSocketService');
-// const BoundaryService = require('../services/BoundaryService');
-
+const BoundaryService = require('../services/BoundaryService');
+const LocalMegaphone = require('../services/LocalMegaphone');
 const LogService = {
     processLog: async (data) => { 
         const device = await DeviceModel.findbyID(data.device_id);
@@ -33,7 +33,15 @@ const LogService = {
             DeviceModel.updateDevice(data)
         ]);
         if (log_id && updateResult){
-            //Later on, the Websocket event
+            LocalMegaphone.emit('DEVICE_UPDATES', {
+                device_id: data.device_id,
+                data: {
+                    lat: data.latitude,
+                    lon: data.longitude,
+                    battery: data.battery,
+                    timestamp: data.timestamp
+                }
+            });
             //Later on, the Boundary logic
         } else {
             throw new Error("Log create and update failed"); 

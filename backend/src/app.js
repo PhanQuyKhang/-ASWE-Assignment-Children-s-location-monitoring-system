@@ -5,13 +5,17 @@ const cookieParser = require('cookie-parser');
 const LogRouter = require('./routes/LogRoute');
 const AuthRouter = require('./routes/AuthRoute');
 const DeviceRouter = require('./routes/DeviceRoute'); // IMPORT NEW ROUTE
-
+const http = require('http'); 
+const { Server } = require('socket.io'); 
 const { sql, testConnection } = require('./database/connection'); 
-
+const WSHandler = require('./services/WSHandler');
 const startHeartbeatMonitor = require('./Cron/DeviceHeartbeat.js');
 
 const app = express();
-
+app.use((req, res, next) => {
+    console.log(`🛎️  Knock Knock: ${req.method} ${req.url}`);
+    next();
+});
 const allowedOrigins = new Set([
     process.env.FRONTEND_URL,
     'http://localhost:5173',
@@ -42,8 +46,15 @@ app.use('/device', DeviceRouter);
 //----------------------------SERVER-------------------------------------------
 
 const PORT = process.env.PORT || 3000;
+const server = http.createServer(app);
 
-app.listen(PORT, async () => {
+const io = new Server(server, {
+    cors: { origin: "*" } 
+});
+
+WSHandler(io);
+
+server.listen(PORT, async () => {
     console.log(`🚀 Server đang chạy tại http://localhost:${PORT}`);
     
     const isDbConnected = await testConnection();

@@ -46,6 +46,26 @@ class Device {
         `;
         return result || null;
     }
+    static async getActiveDevices(userId) {
+        try {
+            const rows = await sql`
+                SELECT device_id 
+                FROM devices 
+                WHERE user_id = ${userId} AND status = 'ACTIVE'
+            `;
+            
+            if (!rows || rows.length === 0) {
+                console.log(`No active devices found for user: ${userId}`);
+                return [];
+            }
+                
+            return rows.map(row => String(row.device_id));
+            
+        } catch (error) {
+            console.error("❌ DB Error in getActiveDevices:", error);
+            return [];
+        }
+    }
 }
 
 
