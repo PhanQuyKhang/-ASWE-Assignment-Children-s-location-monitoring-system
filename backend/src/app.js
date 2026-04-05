@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const LogRouter = require('./routes/LogRoute');
 const AuthRouter = require('./routes/AuthRoute');
+const DeviceRouter = require('./routes/DeviceRoute'); // IMPORT NEW ROUTE
 
 const { sql, testConnection } = require('./database/connection'); 
 
@@ -18,6 +19,7 @@ app.use(express.json());
 
 app.use('/auth', AuthRouter);
 app.use('/log', LogRouter);
+app.use('/device', DeviceRouter);
 
 //----------------------------SERVER-------------------------------------------
 
