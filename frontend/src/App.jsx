@@ -1,11 +1,37 @@
+import { Navigate, Route, Routes } from 'react-router-dom';
+import ProtectedRoute from './components/ProtectedRoute';
+import DashboardPage from './pages/DashboardPage';
+import LoginPage from './pages/LoginPage';
+import ProfilePage from './pages/ProfilePage';
+import SignupPage from './pages/SignupPage';
+
 function App() {
   return (
-    <div className="flex h-screen items-center justify-center bg-gray-100">
-      <h1 className="text-4xl font-bold text-blue-600 shadow-lg p-6 bg-white rounded-xl">
-        CLMS Frontend is Alive! 🚀
-      </h1>
-    </div>
-  )
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/signup" element={<SignupPage />} />
+
+      <Route
+        path="/dashboard"
+        element={
+          <ProtectedRoute>
+            <DashboardPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/profile"
+        element={
+          <ProtectedRoute>
+            <ProfilePage />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route path="/" element={<Navigate to="/dashboard" replace />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
 }
 
-export default App
+export default App;

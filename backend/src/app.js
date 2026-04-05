@@ -1,18 +1,22 @@
 require("dotenv").config();
 const express = require('express');
+const cors = require('cors');
 const LogRouter = require('./routes/LogRoute');
+const AuthRouter = require('./routes/AuthRoute');
 
 const { sql, testConnection } = require('./database/connection'); 
 
 const startHeartbeatMonitor = require('./Cron/DeviceHeartbeat.js');
 
 const app = express();
+app.use(cors());
 app.use(express.json());
 
 
 
 //----------------------------ROUTES-------------------------------------------
 
+app.use('/auth', AuthRouter);
 app.use('/log', LogRouter);
 
 //----------------------------SERVER-------------------------------------------
