@@ -21,10 +21,15 @@ module.exports = (io) => {
     // ==========================================
     // PART 2: SOCKET SECURITY & ROOM ROUTING
     // ==========================================
-    
+    const getCookie = (cookieString, cookieName) => {
+        if (!cookieString) return null;
+        const match = cookieString.match(new RegExp('(^| )' + cookieName + '=([^;]+)'));
+        if (match) return match[2];
+        return null;
+    };
     io.use(async (socket, next) => {
         try {
-            const token = socket.handshake.headers.token;
+            const token = socket.handshake.headers.token || getCookie(socket.handshake.headers.cookie,'clms_access_token');;
             if (!token) throw new Error("No token provided");
             
             const decoded = jwt.verify(token, process.env.JWT_SECRET);
