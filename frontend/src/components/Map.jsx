@@ -41,31 +41,34 @@ export default function Map({ deviceId }) {
     const [isOnline, setIsOnline] = useState(false);
 
     useEffect(() => {
-        const savedToken = localStorage.getItem('accessToken') || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxLCJlbWFpbCI6ImFsaWNlQGRlbW8uY29tIiwicm9sZSI6IlBBUkVOVCIsImlhdCI6MTc3NTQ2NDUwOSwiZXhwIjoxNzc2MDY5MzA5fQ.2wd9AOEkbjDiUH-ePBocZTOB1lNGKbQHZ4NRzOAj7nE";
-
+        // KHÔNG CẦN: const token = localStorage.getItem(...) nữa
+        
+        // 1. KẾT NỐI SOCKET (Tự động dùng Cookie)
         const socket = io('http://localhost:3000', {
-            transports: ['polling', 'websocket'],
-            extraHeaders: { token: savedToken }
+            withCredentials: true,
+            transports: ['polling', 'websocket'] 
         });
 
         socket.on('connect', () => {
-            setIsOnline(true);
-            console.log("🟢 Connected!");
+            setIsOnline(true)
+            console.log("🟢 Socket connected using Browser Cookies!");
         });
 
         socket.on('location_update', (data) => {
+            console.log("📍 New location:", data);
             if (data.lat && data.lon) {
-                const newPos = [data.lat, data.lon];
-                setPosition(newPos);
-                console.log("✅ Đã cập nhật position mới, ChangeView sẽ tự lướt map.");
+                setPosition([data.lat, data.lon]);
             }
         });
 
-        socket.on('connect_error', () => setIsOnline(false));
+        socket.on('connect_error', (err) => {
+            console.error("❌ Socket Error (Check if logged in):", err.message);
+        });
 
-        return () => { socket.disconnect(); };
+        return () => {
+            socket.disconnect();
+        };
     }, [deviceId]);
-
     return (
         <div className="relative w-full h-[500px] rounded-xl overflow-hidden border-2 border-gray-100 shadow-lg">
             <div className="absolute top-2 right-2 z-[1000] bg-white/90 px-3 py-1 rounded-full text-xs font-bold shadow-sm flex items-center gap-2">

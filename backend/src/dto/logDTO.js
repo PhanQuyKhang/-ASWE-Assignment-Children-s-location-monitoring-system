@@ -65,9 +65,9 @@ function validateLogPayload(data) {
     if (loc.battery?.level !== undefined) {
         battery_level = Number(loc.battery.level);
 
-        if (isNaN(battery_level) || battery_level < 0 || battery_level > 1) {
-            throw new Error("Invalid Log: Invalid battery level");
-        }
+        // if (isNaN(battery_level) || battery_level < 0 || battery_level > 1) {
+        //     throw new Error("Invalid Log: Invalid battery level");
+        // }
         battery_level *=100;
     }
     
