@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import useAuth from '../hooks/useAuth';
+import Map from '../components/Map';
 
 const TAB_KEYS = ['profile', 'map', 'boundary'];
 
@@ -233,23 +234,36 @@ export default function DashboardPage() {
               </article>
             </div>
           ) : (
-            <div className="tab-placeholder">
-              <div className="tab-placeholder-header">
-                <div className="mini-card-label">{tabMeta[activeTab].title}</div>
-                <h2>{tabMeta[activeTab].title}</h2>
-                <p>{tabMeta[activeTab].subtitle}</p>
-              </div>
-              <div className="tab-placeholder-map">
-                <div className="tab-placeholder-pin" />
-                <div className="tab-placeholder-pin pin-2" />
-                <div className="tab-placeholder-pin pin-3" />
-                <div className="tab-placeholder-pin pin-4" />
-                <div className="tab-placeholder-overlay">
-                  <strong>Placeholder view</strong>
-                  <span>Connect the map and zone builder here next.</span>
-                </div>
-              </div>
-            </div>
+            <article className="card dashboard-card">
+              <div className="mini-card-label">{tabMeta[activeTab].title}</div>
+              <Map 
+                  mode={activeTab === 'boundary' ? 'edit' : 'view'} 
+                  deviceId={user?.device_id} 
+                  // Handle the save logic passed from the Map component
+                  onSave={async (points) => {
+                      const zoneName = prompt("Enter safe zone name (e.g., School):");
+                      if (!zoneName) return;
+
+                      try {
+                          // Using the specific Device ID for testing (Tommy's device)
+                          const deviceId = "a6289523-a7a4-4c42-889d-4a98ce850e22"; 
+
+                          const response = await axios.post('http://localhost:3000/api/zones/polygon', {
+                              deviceId: deviceId,
+                              zoneName: zoneName,
+                              points: points // Array of [{lat, lng}, ...] from LeafletMap
+                          });
+
+                          if (response.data) {
+                              alert("Safe zone has been saved successfully!");
+                          }
+                      } catch (error) {
+                          console.error("API Error:", error);
+                          alert("Unable to save the safe zone. Please try again.");
+                      }
+                  }}
+              />
+            </article>
           )}
         </section>
       </section>
