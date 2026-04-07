@@ -29,7 +29,8 @@ module.exports = (io) => {
     };
     io.use(async (socket, next) => {
         try {
-            const token = socket.handshake.headers.token || getCookie(socket.handshake.headers.cookie,'clms_access_token');;
+            const token = socket.handshake.headers.token || getCookie(socket.handshake.headers.cookie,'clms_access_token');
+            console.log(token)
             if (!token) throw new Error("No token provided");
             
             const decoded = jwt.verify(token, process.env.JWT_SECRET);

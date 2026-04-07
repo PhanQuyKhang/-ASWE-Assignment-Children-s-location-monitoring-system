@@ -5,6 +5,7 @@ const cookieParser = require('cookie-parser');
 const LogRouter = require('./routes/LogRoute');
 const AuthRouter = require('./routes/AuthRoute');
 const DeviceRouter = require('./routes/DeviceRoute'); // IMPORT NEW ROUTE
+const BoundaryRoute = require('./routes/BoundaryRoute'); 
 const http = require('http'); 
 const { Server } = require('socket.io'); 
 const { sql, testConnection } = require('./database/connection'); 
@@ -42,6 +43,7 @@ app.use(cookieParser());
 app.use('/auth', AuthRouter);
 app.use('/log', LogRouter);
 app.use('/device', DeviceRouter);
+app.use('/device/boundary', BoundaryRoute);
 
 //----------------------------SERVER-------------------------------------------
 
@@ -49,7 +51,10 @@ const PORT = process.env.PORT || 3000;
 const server = http.createServer(app);
 
 const io = new Server(server, {
-    cors: { origin: "*" } 
+    cors: {
+        origin: ["http://localhost:5173", "http://localhost:5174", "http://localhost:5175"], 
+        credentials: true
+    }
 });
 
 WSHandler(io);

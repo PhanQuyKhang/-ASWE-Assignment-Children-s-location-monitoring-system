@@ -17,7 +17,8 @@ class Device {
             UPDATE devices
             SET 
                 last_lat = ${latitude}, 
-                last_lon = ${longitude}
+                last_lon = ${longitude},
+                last_updated = ${timestamp}
             WHERE device_id = ${device_id} 
             AND status != 'INACTIVE'
             RETURNING *;
@@ -36,12 +37,12 @@ class Device {
     }
 
     static async addDevice(data) {
-        const { deviceId, userId, childName } = data;
+        const { deviceId, userId, childName, timeZone } = data;
         
         // Execute the insert query using Neon serverless sql template
         const [result] = await sql`
-            INSERT INTO devices (device_id, user_id, child_name)
-            VALUES (${deviceId}, ${userId}, ${childName})
+            INSERT INTO devices (device_id, user_id, child_name, timezone)
+            VALUES (${deviceId}, ${userId}, ${childName}, ${timezone})
             RETURNING *;
         `;
         return result || null;

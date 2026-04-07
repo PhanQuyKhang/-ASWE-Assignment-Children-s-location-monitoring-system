@@ -1,7 +1,6 @@
 const LogModel = require('../models/LogModel')
 const DeviceModel = require('../models/DeviceModel')
-// const WebSocketService = require('../services/WebSocketService');
-const BoundaryService = require('../services/BoundaryService');
+//const BoundaryService = require('../services/BoundaryService');
 const LocalMegaphone = require('../services/LocalMegaphone');
 const LogService = {
     processLog: async (data) => { 
