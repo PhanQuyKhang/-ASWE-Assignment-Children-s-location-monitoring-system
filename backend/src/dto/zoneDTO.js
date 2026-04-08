@@ -169,59 +169,40 @@ function validateZone(data) {
             throw new Error("POLYGON requires at least 3 points");
         }
 
-        const orders = new Set();
         const coords = new Set();
 
-        const formattedPoints = points.map((p) => {
-            if (!p || p.latitude == null || p.longitude == null || p.sequence_order == null) {
-                throw new Error("Each point must include latitude, longitude, sequence_order");
+
+        //Add sequence_order to each point for database
+        const formattedPoints = points.map((p, index) => {
+            if (!p || p.latitude == null || p.longitude == null ) {
+                throw new Error("Each point must include latitude, longitude");
             }
 
             const lat = Number(String(p.latitude).trim());
             const lon = Number(String(p.longitude).trim());
-            const order = Number(p.sequence_order);
             const coordKey  = `${lon},${lat}`;
-            if (isNaN(lat) || isNaN(lon) || isNaN(order)) {
+            if (isNaN(lat) || isNaN(lon)) {
                 throw new Error("Invalid point values");
             }
 
             if (!isValidLat(lat) || !isValidLon(lon)) {
                 throw new Error("Invalid point coordinates");
             }
-            if (order <= 0 || !Number.isInteger(order)) {
-                throw new Error("Order must be positive integers");
-            }
 
-            if (orders.has(order)) {
-                throw new Error("Duplicate sequence_order");
-            }
             if (coords.has(coordKey )) {
                 throw new Error("Duplicate points");
             }
 
-            orders.add(order);
             coords.add(coordKey);
 
             return {
                 latitude: lat,
                 longitude: lon,
-                sequence_order: order
+                sequence_order: index + 1
             };
         });
 
         points = formattedPoints;
-         
-        const orderList = [...orders].sort((a, b) => a - b);
-
-        if (orderList[0] !== 1) {
-            throw new Error("sequence_order must start at 1");
-        }
-
-        for (let i = 1; i < orderList.length; i++) {
-            if (orderList[i] !== orderList[i - 1] + 1) {
-                throw new Error("sequence_order must be continuous (1,2,3...)");
-            }
-        }
         
         if (radius || center_lat || center_lon) {
             throw new Error("POLYGON must not include circle fields");
