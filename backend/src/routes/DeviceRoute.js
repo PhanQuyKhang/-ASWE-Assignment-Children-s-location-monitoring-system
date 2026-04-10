@@ -20,7 +20,7 @@ router.post('/', async (req, res) => {
     }
 
     // Call Model to insert data
-    const newDevice = await Device.addDevice({ deviceId, userId, childName });
+    const newDevice = await Device.addDevice({ deviceId, userId, childName, timezone});
 
     res.status(201).json({
       success: true,

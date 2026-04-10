@@ -7,7 +7,6 @@ const LogController = {
         try {
             console.log(req.body);
             const data = await validateLogPayload(req.body);
-            console.log("true");
             LogService.processLog(data);
             return res.json({ success: true });
         } catch (err) {
