@@ -12,7 +12,6 @@ function authMiddleware(req, res, next) {
   if (!token) {
     return res.status(401).json({ error: 'Unauthorized: missing token' });
   }
-
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     req.user = decoded;

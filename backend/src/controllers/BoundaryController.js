@@ -4,8 +4,9 @@ const { validateZone } = require("../dto/zoneDTO");
 const BoundaryController = {
     createZone: async (req, res) => { 
         try {
+            const userId = req.user.user_id;
             const data = await validateZone(req.body);
-            await BoundaryService.createZone(data);
+            await BoundaryService.createZone(data, userId);
             return res.json({ success: true });
         } catch (err) {
             console.log(err);
@@ -15,8 +16,9 @@ const BoundaryController = {
     },
     updateZone: async (req, res) => { 
         try {
+            const userId = req.user.user_id;
             const data = await validateZone(req.body);
-            await BoundaryService.updateZone(data);
+            //await BoundaryService.updateZone(data, userId);
             return res.json({ success: true });
         } catch (err) {
             console.log(err);
@@ -26,8 +28,9 @@ const BoundaryController = {
     },
     deleteZone: async (req, res) => { 
         try {
+            const userId = req.user.user_id;
             const zone_id = req.body;
-            await BoundaryService.deleteZone(zone_id);
+            //await BoundaryService.deleteZone(zone_id, userId);
             return res.json({ success: true });
         } catch (err) {
             console.log(err);

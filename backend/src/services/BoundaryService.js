@@ -180,7 +180,7 @@ function validatePolygon(points) {
 
 const BoundaryService = {
 
-    async createZone(data) {
+    async createZone(data, user_id) {
         const {
             device_id,
             type,
@@ -193,6 +193,7 @@ const BoundaryService = {
         const device = await DeviceModel.findbyID(device_id);
         if (!device) throw new Error("Device not found");
         if (device.status === "INACTIVE") throw new Error("Device inactive");
+        if (device.user_id !== user_id) throw new Error("Unauthorized Action");
 
         // ===== DATE =====
         if (specific_date) {
@@ -228,7 +229,35 @@ const BoundaryService = {
 
         // ===== SAVE =====
         return await BoundaryModel.create(data);
+    },
+
+    async check(log) {
+        const { device_id, timestamp, latitude, longitude, accuracy, speed, heading, altitude, odometer, battery_level, activity_type } = logData;
+
+        // ===== DEVICE =====
+        const device = await DeviceModel.findbyID(device_id);
+        if (!device) throw new Error("Device not found");
+        if (device.status === "INACTIVE") throw new Error("Device inactive");
+
+        const activeZones = await BoundaryModel.getActiveZones(device_id);
+        if (!activeZones){
+            return;
+        }
+        const location = turf.point([longitude, latitude])
+        for (const zone of activeZones){
+            const {schedule_type, start_time, duration, days_of_month, days_of_week} = zone;
+            if (zone.type == "CIRCLE"){
+                const center = [zone.longitude, zone.latitude];
+                const options = {steps: zone.radius*100, units: "meters", properties: { foo: "bar" } };
+                const circle = turf.circle(center, zone.radius, options);
+                if (turf.booleanPointInPolygon(turf.point, circle)){
+                    return true;
+                }
+            }
+        }
+       
     }
+    
 
 };
 
