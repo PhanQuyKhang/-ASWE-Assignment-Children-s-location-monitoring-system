@@ -1,7 +1,9 @@
 const LogModel = require('../models/LogModel')
 const DeviceModel = require('../models/DeviceModel')
-//const BoundaryService = require('../services/BoundaryService');
+const BoundaryService = require('../services/BoundaryService');
 const LocalMegaphone = require('../services/LocalMegaphone');
+const { validate: validateUUID } = require('uuid');
+
 const LogService = {
     processLog: async (data) => { 
         const device = await DeviceModel.findbyID(data.device_id);
@@ -41,13 +43,34 @@ const LogService = {
                     timestamp: data.timestamp
                 }
             });
-            //Later on, the Boundary logic
+            BoundaryService.check(data);
         } else {
             throw new Error("Log create and update failed"); 
         }
 
         return log_id;
     },
+
+    getLatestbyID: async (device_id, user_id) => {
+        if (!validateUUID(device_id)) {
+            throw new Error("Invalid UUID");
+        }
+        
+        const device = await DeviceModel.findbyID(device_id);
+        if (!device) {
+            throw new Error("Device not found");
+        }
+        if (device.user_id !== user_id) {
+            throw new Error("Not authorized to view this device");
+        }
+        const latestLog = await LogModel.getLatestbyID(device_id);
+        if (!latestLog) {
+            throw new Error("No logs found for this device");
+        }
+        console.log(latestLog.user_id);
+
+        return latestLog;
+    }
       
 };
 

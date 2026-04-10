@@ -37,15 +37,20 @@ class Device {
     }
 
     static async addDevice(data) {
-        const { deviceId, userId, childName, timeZone } = data;
-        
-        // Execute the insert query using Neon serverless sql template
-        const [result] = await sql`
-            INSERT INTO devices (device_id, user_id, child_name, timezone)
-            VALUES (${deviceId}, ${userId}, ${childName}, ${timezone})
-            RETURNING *;
-        `;
-        return result || null;
+        try {
+            const { userId, childName, timeZone } = data;
+            
+            // Execute the insert query using Neon serverless sql template
+            const [result] = await sql`
+                INSERT INTO devices (user_id, child_name, timezone)
+                VALUES (${userId}, ${childName}, ${timezone})
+                RETURNING *;
+            `;
+            return result || null;
+        } catch (error) {
+            console.error("❌ DB Error in addDevice:", error);
+            return [];
+        }
     }
     static async getActiveDevices(userId) {
         try {
