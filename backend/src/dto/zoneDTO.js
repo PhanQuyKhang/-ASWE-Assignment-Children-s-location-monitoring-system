@@ -67,7 +67,7 @@ function validateZone(data) {
         throw new Error("start_time must be HH:mm");
     }
 
-    if (duration !== undefined) {
+    if (duration !== null) {
         const d = Number(duration);
 
         if (isNaN(d)) throw new Error("duration must be a number");

@@ -17,7 +17,7 @@ export const createBoundary = async (deviceId, boundaryData) => {
     center_lon: boundaryData.center_lon,
     points: boundaryData.points
   };
-
-  const response = await api.post('/device/boundary/create', payload);
+  console.log(deviceId)
+  const response = await api.post(`/device/boundary/create/${deviceId}`, payload);
   return response.data;
 };

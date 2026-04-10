@@ -43,7 +43,7 @@ const LogService = {
                     timestamp: data.timestamp
                 }
             });
-            BoundaryService.check(data);
+            // BoundaryService.check(data);
         } else {
             throw new Error("Log create and update failed"); 
         }
