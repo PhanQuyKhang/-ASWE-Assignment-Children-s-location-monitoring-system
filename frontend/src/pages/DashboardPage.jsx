@@ -1,8 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
+
+// Hooks
 import useAuth from '../hooks/useAuth';
+import useDevices from '../hooks/useDevice';
+// Services
+import { createBoundary } from '../services/boundaryService';
+
+// Components
 import Map from '../components/Map';
 import axios from 'axios';
-import { createBoundary } from '../services/boundaryService';
 
 const TAB_KEYS = ['profile', 'map', 'boundary'];
 
@@ -14,6 +20,7 @@ function getInitials(user) {
 
 export default function DashboardPage() {
   const { user, logout, updateProfile, changePassword } = useAuth();
+  const { devices, selectedDevice, setSelectedDevice } = useDevices();
   const [activeTab, setActiveTab] = useState('profile');
   const [profileForm, setProfileForm] = useState({ fname: '', lname: '', phone: '' });
   const [passwordForm, setPasswordForm] = useState({
@@ -92,14 +99,13 @@ export default function DashboardPage() {
     }
   }
 
- const handleSaveBoundary = async (boundaryDataFromMap) => {
-    const zoneName = prompt("Enter safe zone name (e.g., School):");
-    if (!zoneName) return;
-
+  // --- handleSaveBoundary đã được lược bỏ prompt và gộp dữ liệu ---
+  const handleSaveBoundary = async (finalBoundaryData) => {
     try {
-      const deviceId = user?.device_id;
-
-      const result = await createBoundary(deviceId, boundaryDataFromMap, zoneName);
+      const deviceId = selectedDevice?.device_id || null;
+      
+      // finalBoundaryData đã chứa đầy đủ zone_name, type, schedule_type và points
+      const result = await createBoundary(deviceId, finalBoundaryData);
       
       if (result) {
         alert("Success: Safe zone created!");
@@ -257,7 +263,7 @@ export default function DashboardPage() {
               <div className="mini-card-label">{tabMeta[activeTab].title}</div>
               <Map 
                   mode={activeTab === 'boundary' ? 'edit' : 'view'} 
-                  deviceId={user?.device_id} 
+                  deviceId={selectedDevice?.device_id} 
                   onSave={handleSaveBoundary}
               />
             </article>

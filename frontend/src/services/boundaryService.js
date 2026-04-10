@@ -1,25 +1,21 @@
 import api from './api';
 
-/**
- * @param {Object} boundaryData
- * @param {string} deviceId
- * @param {string} zoneName
- */
-export const createBoundary = async (deviceId, boundaryData, zoneName) => {
+export const createBoundary = async (deviceId, boundaryData) => {
+  // boundaryData lúc này đã được đóng gói chuẩn từ Map.jsx
   const payload = {
     device_id: deviceId,
-    zone_name: zoneName,
+    zone_name: boundaryData.zone_name,
     type: boundaryData.type,
-    schedule_type: "ALWAYS",
-    start_time: null,
-    end_time: null,
-    days_of_week: null,
-    days_of_month: null,
-    specific_date: null,
-    radius: boundaryData.radius || null,
-    center_lat: boundaryData.center_lat || null,
-    center_lon: boundaryData.center_lon || null,
-    points: boundaryData.points || null
+    schedule_type: boundaryData.schedule_type,
+    start_time: boundaryData.start_time,
+    duration: boundaryData.duration,
+    days_of_week: boundaryData.days_of_week,
+    days_of_month: boundaryData.days_of_month,
+    specific_date: boundaryData.specific_date,
+    radius: boundaryData.radius,
+    center_lat: boundaryData.center_lat,
+    center_lon: boundaryData.center_lon,
+    points: boundaryData.points
   };
 
   const response = await api.post('/device/boundary/create', payload);
