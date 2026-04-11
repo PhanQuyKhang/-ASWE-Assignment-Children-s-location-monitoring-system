@@ -72,7 +72,17 @@ export default function Map({ deviceId, mode, onSave, initialPosition }) {
         const socket = io('http://localhost:3000', { withCredentials: true, transports: ['polling', 'websocket'] });
         socket.on('connect', () => setIsOnline(true));
         socket.on('location_update', (data) => {
-            if (data.lat && data.lon) setPosition([data.lat, data.lon]);
+            console.log("📍 Nhận tin socket:", data);
+
+            // CHỈ CẬP NHẬT NẾU ID TRONG TIN NHẮN KHỚP VỚI ID COMPONENT ĐANG GIỮ
+            if (data.device_id === deviceId) {
+                console.log("✅ Khớp ID, cập nhật Map cho:", deviceId);
+                if (data.lat && data.lon) {
+                    setPosition([data.lat, data.lon]);
+                }
+            } else {
+                console.log("⏭️ Bỏ qua tin của thiết bị khác:", data.device_id);
+            }
         });
         socket.on('connect_error', () => setIsOnline(false));
 
