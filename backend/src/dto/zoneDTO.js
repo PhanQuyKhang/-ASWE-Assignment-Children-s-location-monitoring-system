@@ -30,7 +30,6 @@ function validateZone(data) {
     }
 
     let {
-        device_id,
         zone_name,
         type,
         schedule_type,
@@ -48,9 +47,7 @@ function validateZone(data) {
     //-------------------------
     // BASIC VALIDATION
     //-------------------------
-    if (!validateUUID(device_id)) {
-        throw new Error("Invalid device_id UUID");
-    }
+
 
     if (!zone_name || typeof zone_name !== 'string') {
         throw new Error("zone_name is required");
@@ -67,7 +64,7 @@ function validateZone(data) {
         throw new Error("start_time must be HH:mm");
     }
 
-    if (duration !== undefined) {
+    if (duration) {
         const d = Number(duration);
 
         if (isNaN(d)) throw new Error("duration must be a number");
@@ -213,7 +210,6 @@ function validateZone(data) {
     // FINAL NORMALIZATION
     //-------------------------
     return {
-        device_id,
         zone_name,
         type,
         schedule_type,

@@ -33,17 +33,19 @@ const LogService = {
             LogModel.create(data),
             DeviceModel.updateDevice(data)
         ]);
+        
         if (log_id && updateResult){
             LocalMegaphone.emit('DEVICE_UPDATES', {
                 device_id: data.device_id,
-                data: {
-                    lat: data.latitude,
-                    lon: data.longitude,
-                    battery: data.battery,
-                    timestamp: data.timestamp
-                }
+                child_name: device.child_name,
+                
+                lat: data.latitude,
+                lon: data.longitude,
+                battery: data.battery,
+                timestamp: data.timestamp
+
             });
-            BoundaryService.check(data);
+            //BoundaryService.check(data);
         } else {
             throw new Error("Log create and update failed"); 
         }

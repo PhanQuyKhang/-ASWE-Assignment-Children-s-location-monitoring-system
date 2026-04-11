@@ -3,7 +3,7 @@ const router = express.Router();
 const BoundaryController = require('../controllers/BoundaryController');
 const validateDeviceId = require("../middleware/validateDeviceId");
 const authMiddleware = require('../middleware/authMiddleware');
-router.post('/create', validateDeviceId, authMiddleware, BoundaryController.createZone);
+router.post('/create/:device_id', validateDeviceId, authMiddleware, BoundaryController.createZone);
 
 
 

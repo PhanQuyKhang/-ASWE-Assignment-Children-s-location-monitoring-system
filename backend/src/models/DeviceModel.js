@@ -55,7 +55,7 @@ class Device {
     static async getActiveDevices(userId) {
         try {
             const rows = await sql`
-                SELECT device_id 
+                SELECT * 
                 FROM devices 
                 WHERE user_id = ${userId} AND status = 'ACTIVE'
             `;
@@ -65,7 +65,7 @@ class Device {
                 return [];
             }
                 
-            return rows.map(row => String(row.device_id));
+            return rows;
             
         } catch (error) {
             console.error("❌ DB Error in getActiveDevices:", error);

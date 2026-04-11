@@ -1,7 +1,11 @@
 const DeviceModel = require('../models/DeviceModel');
 const BoundaryModel = require('../models/BoundaryModel');
+//const AlertModel = require('../models/AlertModel');
+
 const { DateTime } = require('luxon');
 const turf = require('@turf/turf');
+const LocalMegaphone = require('../services/LocalMegaphone');
+const { TypeOverrides } = require('pg');
 
 // --------------------
 // HELPERS
@@ -174,21 +178,161 @@ function validatePolygon(points) {
     return polygon;
 }
 
+
+function checkCircleZonebyTurf(center_point, location){
+    const center = [center_point.center_lon, center_point.center_lat];
+    const options = {steps: center_point.radius*100, units: "meters", properties: { foo: "bar" } };
+    const polygon = turf.circle(center, center_point.radius, options);
+    return turf.booleanPointInPolygon(location, polygon);
+}
+function checkCircleZonebyMath(center_point, latitude, longitude ) {
+  const toRad = (deg) => deg * Math.PI / 180;
+
+  const R = 6371000; 
+
+  const dLat = toRad(latitude - center_point.center_lat);
+  const dLon = toRad(longitude - center_point.center_lon);
+
+  const lat1 = toRad(center_point.center_lat);
+  const lat2 = toRad(latitude);
+
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.sin(dLon / 2) ** 2 *
+    Math.cos(lat1) *
+    Math.cos(lat2);
+
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  const distance = R * c;
+
+  return distance <= center_point.radius;
+}
+function checkPolygonZonebyTurf(points, location){
+    points.sort((a, b) => a.sequence_order - b.sequence_order);
+
+    const coords = points.map(p => [
+        p.longitude,
+        p.latitude
+    ]);
+
+    if (coords[0][0] !== coords.at(-1)[0] || coords[0][1] !== coords.at(-1)[1]) {
+        coords.push(coords[0]);
+    }
+
+    const polygon = turf.polygon([coords]);
+    return turf.booleanPointInPolygon(location, polygon);
+}
+
+function checkPolygonZonebyMath(points, latitude, longitude) {
+    points.sort((a, b) => a.sequence_order - b.sequence_order);
+    const x = longitude;
+    const y = latitude;
+
+    let inside = false;
+
+    for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+        const xi = points[i].longitude;
+        const yi = points[i].latitude;
+        const xj = points[j].longitude;
+        const yj = points[j].latitude;
+
+        // --- Boundary check: point on vertex ---
+        if ((x === xi && y === yi) || (x === xj && y === yj)) {
+            return true;
+        }
+
+        // --- Boundary check: point on edge ---
+        const cross = (y - yi) * (xj - xi) - (x - xi) * (yj - yi);
+        if (Math.abs(cross) < 1e-9) { // nearly collinear
+            const minX = Math.min(xi, xj), maxX = Math.max(xi, xj);
+            const minY = Math.min(yi, yj), maxY = Math.max(yi, yj);
+            if (x >= minX && x <= maxX && y >= minY && y <= maxY) {
+                return true;
+            }
+        }
+
+        const intersect =
+        ((yi > y) !== (yj > y)) &&
+        (x < ((xj - xi) * (y - yi)) / (yj - yi) + xi);
+
+        if (intersect) inside = !inside;
+    }
+
+    return inside;
+}
+function isTimeInRange(now, start, durationMinutes) {
+    const end = start.plus({ minutes: durationMinutes });
+
+    if (end.day === start.day) {
+        return now >= start && now <= end;
+    }
+
+    return (
+        (now >= start && now <= start.endOf("day")) ||
+        (now >= start.startOf("day") && now <= end)
+    );
+}
+function isNowInSchedule(zone, timestamp, timezone) {
+    const now = DateTime.fromJSDate(timestamp).setZone(timezone);
+
+    if (zone.schedule_type === "ALWAYS") return true;
+
+    const start = DateTime.fromFormat(
+        zone.start_time,
+        "HH:mm",
+        { zone: timezone }
+    ).set({
+        year: now.year,
+        month: now.month,
+        day: now.day
+    });
+
+    const end = start.plus({ minutes: zone.duration });
+
+    // ===== ONCE =====
+    if (zone.schedule_type === "ONCE") {
+        const date = DateTime.fromISO(zone.specific_date, { zone: timezone });
+
+        if (!date.hasSame(now, "day")) return false;
+
+        return isTimeInRange(now, start, zone.duration);
+    }
+
+    // ===== DAILY =====
+    if (zone.schedule_type === "DAILY") {
+        return isTimeInRange(now, start, zone.duration);
+    }
+
+    // ===== WEEKLY =====
+    if (zone.schedule_type === "WEEKLY") {
+        if (!zone.days_of_week.includes(now.weekday % 7)) return false;
+        return isTimeInRange(now, start, zone.duration);
+    }
+
+    // ===== MONTHLY =====
+    if (zone.schedule_type === "MONTHLY") {
+        if (!zone.days_of_month.includes(now.day)) return false;
+        return isTimeInRange(now, start, zone.duration);
+    }
+
+    return false;
+}
+
 // --------------------
 // SERVICE
 // --------------------
 
 const BoundaryService = {
 
-    async createZone(data, user_id) {
+    async createZone(data, user_id, device_id ) {
         const {
-            device_id,
             type,
             radius,
             points,
             specific_date
         } = data;
-
+        console.log(device_id);
         // ===== DEVICE =====
         const device = await DeviceModel.findbyID(device_id);
         if (!device) throw new Error("Device not found");
@@ -228,11 +372,12 @@ const BoundaryService = {
         }
 
         // ===== SAVE =====
-        return await BoundaryModel.create(data);
+        return await BoundaryModel.create(data, device_id);
     },
 
     async check(log) {
-        const { device_id, timestamp, latitude, longitude, accuracy, speed, heading, altitude, odometer, battery_level, activity_type } = logData;
+        return ;
+        /*const { device_id, timestamp, latitude, longitude, accuracy, speed, heading, altitude, odometer, battery_level, activity_type } = log;
 
         // ===== DEVICE =====
         const device = await DeviceModel.findbyID(device_id);
@@ -244,18 +389,48 @@ const BoundaryService = {
             return;
         }
         const location = turf.point([longitude, latitude])
+
+        let test_1 = false;
+        let test_2 = false;
         for (const zone of activeZones){
-            const {schedule_type, start_time, duration, days_of_month, days_of_week} = zone;
+            //Check if in boundary
+            const {zone_id, schedule_type, start_time, duration, days_of_month, days_of_week} = zone;
             if (zone.type == "CIRCLE"){
-                const center = [zone.longitude, zone.latitude];
-                const options = {steps: zone.radius*100, units: "meters", properties: { foo: "bar" } };
-                const circle = turf.circle(center, zone.radius, options);
-                if (turf.booleanPointInPolygon(turf.point, circle)){
-                    return true;
+                const info = await BoundaryModel.getCircleZone(zone_id);
+                if (!info){
+                    throw new Error ("Can not find information about zone: ");
                 }
+                test_1 = checkCircleZonebyTurf(info, location);
+                test_2 = checkCircleZonebyMath(info, latitude, longitude)
+            } else if (zone.type == "POLYGON"){
+                const info = await BoundaryModel.getPolygonZone(zone_id);
+                if (!info){
+                    throw new Error ("Can not find information about zone: ");
+                }
+                test_1 = checkPolygonZonebyTurf(info, location);
+                test_2 = checkPolygonZonebyMath(info, latitude, longitude)
             }
-        }
-       
+            if (test_1 && test_2) return; 
+
+            //Check if in scheduled
+            if (isNowInSchedule) { //later do 
+                LocalMegaphone.emit('DEVICE_OUT_ZONE', {
+                    device_id: device_id,
+                    child_name: device.child_name,
+                    zone_id: zone.zone_id,
+                    zone_name: zone.zone_name,
+                    data: {
+                        lat: latitude,
+                        lon: longitude,
+                        battery: battery_level,
+                        timestamp: timestamp,
+                        activity_type: activity_type
+                    }
+                });
+                AlertModel.create()
+                //Mail
+            }
+        }*/ 
     }
     
 
