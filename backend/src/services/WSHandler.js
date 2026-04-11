@@ -9,9 +9,10 @@ module.exports = (io) => {
     // ==========================================
     LocalMegaphone.on('DEVICE_UPDATES', (event) => {
         try {
+            console.log("HII");
             const roomName = `room_device_${event.device_id}`;
             
-            io.to(roomName).emit('location_update', event.data);
+            io.to(roomName).emit('location_update', event);
             
         } catch (error) {
             console.error("Failed to process local event:", error);
@@ -34,11 +35,9 @@ module.exports = (io) => {
             if (!token) throw new Error("No token provided");
             
             const decoded = jwt.verify(token, process.env.JWT_SECRET);
-            console.log ("verified token");
-            const userDevices = await DeviceModel.getActiveDevices(decoded.user_id);
-            console.log (userDevices);
-            socket.allowedDevices = userDevices; 
-            
+            let userDevices = await DeviceModel.getActiveDevices(decoded.user_id);
+            userDevices = userDevices.map(device => String(device.device_id));
+            socket.allowedDevices = userDevices;     
             next(); 
             
         } catch (err) {

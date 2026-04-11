@@ -106,18 +106,19 @@ export default function DashboardPage() {
 
   const handleSaveBoundary = async (finalBoundaryData) => {
     try {
-      const deviceId = configTarget.device_id;
-      console.log(deviceId)
+      // configTarget được set khi user chọn device ở Step 1
+      const deviceId = configTarget?.device_id;
       
+      // finalBoundaryData đã chứa mọi thứ từ Sidebar của Map.jsx
       const result = await createBoundary(deviceId, finalBoundaryData);
       
       if (result) {
-        alert(`Success: Boundary set for ${configTarget.child_name}`);
-        setConfigTarget(null);
+        alert(`Success: Boundary "${finalBoundaryData.zone_name}" set for ${configTarget.child_name}`);
+        setConfigTarget(null); // Reset về danh sách chọn device
       }
     } catch (err) {
       const errorMsg = err.response?.data?.error || err.message;
-      alert("Failed to save: " + errorMsg);
+      alert("Failed to save boundary: " + errorMsg);
     }
   };
 

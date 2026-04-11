@@ -1,7 +1,8 @@
-const { neon } = require("@neondatabase/serverless");
 require('dotenv').config();
 
-const sql = neon(process.env.DATABASE_URL);
+const postgres = require("postgres");
+const sql = postgres(process.env.DATABASE_URL);
+
 
 const testConnection = async () => {
   try {

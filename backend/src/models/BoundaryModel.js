@@ -5,9 +5,8 @@ class Boundary {
     // =============================
     // CREATE ZONE (CIRCLE / POLYGON)
     // =============================
-    static async create(data) {
+    static async create(data, device_id) {
         const {
-            device_id,
             zone_name,
             type,
             schedule_type,
@@ -22,95 +21,82 @@ class Boundary {
             points
         } = data;
 
-        await sql`BEGIN`;
-
-        try {
-            const [zone] = await sql`
-                INSERT INTO zones (
-                    device_id, zone_name, type, schedule_type,
-                    start_time, duration,
-                    days_of_week,
-                    days_of_month,
-                    specific_date
-                ) VALUES (
-                    ${device_id},
-                    ${zone_name},
-                    ${type},
-                    ${schedule_type},
-                    ${start_time},
-                    ${duration},
-                    ${days_of_week},
-                    ${days_of_month},
-                    ${specific_date}
-                )
-                RETURNING *;
+        return sql.begin(async tx => {
+            // Insert zone
+            const [zone] = await tx`
+            INSERT INTO zones (
+                device_id, zone_name, type, schedule_type,
+                start_time, duration,
+                days_of_week,
+                days_of_month,
+                specific_date
+            ) VALUES (
+                ${device_id},
+                ${zone_name},
+                ${type},
+                ${schedule_type},
+                ${start_time},
+                ${duration},
+                ${days_of_week},
+                ${days_of_month},
+                ${specific_date}
+            )
+            RETURNING *;
             `;
 
             if (!zone) {
-                throw new Error("Failed to create zone");
+            throw new Error("Failed to create zone");
             }
 
+            // Insert geometry depending on type
             if (type === "CIRCLE") {
-                await sql`
-                    INSERT INTO circles (
-                        zone_id,
-                        center_lat,
-                        center_lon,
-                        radius
-                    ) VALUES (
-                        ${zone.zone_id},
-                        ${center_lat},
-                        ${center_lon},
-                        ${radius}
-                    );
+            await tx`
+                INSERT INTO circles (
+                zone_id, center_lat, center_lon, radius
+                ) VALUES (
+                ${zone.zone_id},
+                ${center_lat},
+                ${center_lon},
+                ${radius}
+                );
+            `;
+            } else {
+            for (const p of points) {
+                await tx`
+                INSERT INTO poly_points (
+                    zone_id, sequence_order, latitude, longitude
+                ) VALUES (
+                    ${zone.zone_id},
+                    ${p.sequence_order},
+                    ${p.latitude},
+                    ${p.longitude}
+                );
                 `;
             }
-            else {
-                const values = points.map(p => [
-                    zone.zone_id,
-                    p.sequence_order,
-                    p.latitude,
-                    p.longitude
-                ]);
-
-                await sql`
-                    INSERT INTO poly_points (
-                        zone_id,
-                        sequence_order,
-                        latitude,
-                        longitude
-                    ) VALUES ${sql(values)};
-                `;
             }
 
-            await sql`COMMIT`;
             return zone;
-
-        } catch (error) {
-            await sql`ROLLBACK`;
-            console.error("Transaction failed:", error.message);
-            throw error;
-        }
+        });
     }
 
     // =============================
     // GET ACTIVE ZONES
     // =============================
-    static async getActiveZones(deviceID) {
+    static async getActiveZones(device_id) {
         try {
-            if (!deviceID) {
+            if (!device_id) {
                 throw new Error("deviceID is required");
             }
 
             const rows = await sql`
                 SELECT * 
                 FROM zones 
-                WHERE device_id = ${deviceID}
+                WHERE device_id = ${device_id}
                 AND is_active = true
             `;
 
             if (!rows || rows.length === 0) {
-                console.log(`No active zones found for device: ${deviceID}`);
+                console.log(`No active zones found for device: ${device_id}`);
                 return [];
             }
 
@@ -121,6 +107,57 @@ class Boundary {
             throw error;
         }
     }
+
+    static async getCircleZone(zone_id) {
+        try {
+            if (!zone_id) {
+                throw new Error("zone_id is required");
+            }
+
+            const rows = await sql`
+                SELECT * 
+                FROM circles 
+                WHERE zone_id = ${zone_id}
+            `;
+
+            if (!rows || rows.length === 0) {
+                console.log(`No circle zone found for zone: ${zone_id}`);
+                return [];
+            }
+
+            return rows;
+
+        } catch (error) {
+            console.error("❌ DB Error in getCircleZone:", error.message);
+            throw error;
+        }
+    }
+    static async getPolygonZone(zone_id) {
+        try {
+            if (!zone_id) {
+                throw new Error("zone_id is required");
+            }
+
+            const rows = await sql`
+                SELECT * 
+                FROM poly_points 
+                WHERE zone_id = ${zone_id}
+            `;
+
+            if (!rows || rows.length === 0) {
+                console.log(`No polygon zone found for zone: ${zone_id}`);
+                return [];
+            }
+
+            return rows;
+
+        } catch (error) {
+            console.error("❌ DB Error in getPolygonZone:", error.message);
+            throw error;
+        }
+    }
+    
+
 }
 
 module.exports = Boundary;

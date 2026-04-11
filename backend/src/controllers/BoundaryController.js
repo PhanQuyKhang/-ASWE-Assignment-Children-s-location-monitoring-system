@@ -5,8 +5,9 @@ const BoundaryController = {
     createZone: async (req, res) => { 
         try {
             const userId = req.user.user_id;
+            const {device_id} = req.params;
             const data = await validateZone(req.body);
-            await BoundaryService.createZone(data, userId);
+            await BoundaryService.createZone(data, userId, device_id);
             return res.json({ success: true });
         } catch (err) {
             console.log(err);
