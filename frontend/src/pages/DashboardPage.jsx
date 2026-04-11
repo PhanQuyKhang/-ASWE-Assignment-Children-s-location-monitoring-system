@@ -23,6 +23,7 @@ export default function DashboardPage() {
   const { devices, selectedDevice, setSelectedDevice, loading } = useDevices(user?.user_id);
   const [activeTab, setActiveTab] = useState('profile');
   const [configTarget, setConfigTarget] = useState(null);
+  const [viewTarget, setViewTarget] = useState(null);  
   const [profileForm, setProfileForm] = useState({ fname: '', lname: '', phone: '' });
   const [passwordForm, setPasswordForm] = useState({
     newPassword: '',
@@ -43,6 +44,7 @@ export default function DashboardPage() {
   // Reset thiết bị đang chọn khi người dùng chuyển tab
   useEffect(() => {
     setConfigTarget(null);
+    setViewTarget(null);
   }, [activeTab]);
 
   const tabMeta = useMemo(
@@ -106,19 +108,17 @@ export default function DashboardPage() {
 
   const handleSaveBoundary = async (finalBoundaryData) => {
     try {
-      // configTarget được set khi user chọn device ở Step 1
-      const deviceId = configTarget?.device_id;
+      const deviceId = configTarget.device_id;
       
-      // finalBoundaryData đã chứa mọi thứ từ Sidebar của Map.jsx
       const result = await createBoundary(deviceId, finalBoundaryData);
       
       if (result) {
-        alert(`Success: Boundary "${finalBoundaryData.zone_name}" set for ${configTarget.child_name}`);
-        setConfigTarget(null); // Reset về danh sách chọn device
+        alert(`Success: Boundary set for ${configTarget.child_name}`);
+        setConfigTarget(null);
       }
     } catch (err) {
       const errorMsg = err.response?.data?.error || err.message;
-      alert("Failed to save boundary: " + errorMsg);
+      alert("Failed to save: " + errorMsg);
     }
   };
 
@@ -265,18 +265,51 @@ export default function DashboardPage() {
               </article>
             </div>
           ) : activeTab === 'map' ? (
+            /* --- TAB MAP: LUỒNG CHỌN DEVICE ĐỂ XEM --- */
             <article className="card dashboard-card">
-              <div className="mini-card-label">{tabMeta[activeTab].title}</div>
-              {/* Tab Map hiển thị vị trí thực tế của thiết bị đầu tiên hoặc thiết bị đã chọn */}
-              <Map 
-                  mode="view" 
-                  deviceId={selectedDevice.device_id} 
-              />
+              {!viewTarget ? (
+                <div className="p-4">
+                  <div className="mini-card-label">Select Child</div>
+                  <h2 className="text-xl font-bold mb-4 text-gray-800">Whom do you want to track?</h2>
+                  {loading ? (
+                    <p className="text-gray-500 italic">Loading children list...</p>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">
+                      {devices.map((device) => (
+                        <button
+                          key={device.device_id}
+                          onClick={() => setViewTarget(device)}
+                          className="flex items-center gap-4 p-4 border-2 border-gray-100 rounded-xl hover:border-blue-500 hover:bg-blue-50 transition-all text-left"
+                        >
+                          <div className="avatar bg-blue-100 text-blue-700 font-bold">{device.child_name?.[0]?.toUpperCase()}</div>
+                          <div>
+                            <div className="font-bold text-gray-800">{device.child_name}</div>
+                            <div className="text-xs text-gray-400">View live location</div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div>
+                   <div className="flex justify-between items-center mb-4 px-2 py-2 bg-blue-50 rounded-lg border border-blue-100">
+                    <span className="text-sm font-semibold text-blue-800 ml-2">Tracking: {viewTarget.child_name}</span>
+                    <button onClick={() => setViewTarget(null)} className="text-xs font-bold text-gray-500 hover:text-red-500 uppercase tracking-tight">Switch Child</button>
+                  </div>
+                  <Map 
+                      mode="view" 
+                      deviceId={viewTarget.device_id} 
+                      // Truyền vị trí cuối cùng từ DB vào làm vị trí mặc định ban đầu
+                      initialPosition={viewTarget.last_lat && viewTarget.last_lon ? [parseFloat(viewTarget.last_lat), parseFloat(viewTarget.last_lon)] : null}
+                  />
+                </div>
+              )}
             </article>
           ) : (
+            /* --- TAB BOUNDARY (Giữ nguyên luồng của bạn) --- */
             <article className="card dashboard-card">
               {!configTarget ? (
-                /* STEP 1: CHỌN THIẾT BỊ */
                 <div className="p-4">
                   <div className="mini-card-label">Select Child</div>
                   <h2 className="text-xl font-bold mb-4 text-gray-800">Who do you want to set a boundary for?</h2>
@@ -291,7 +324,7 @@ export default function DashboardPage() {
                           className="flex items-center gap-4 p-4 border-2 border-gray-100 rounded-xl hover:border-green-500 hover:bg-green-50 transition-all text-left group"
                         >
                           <div className="avatar bg-green-100 text-green-700 font-bold group-hover:bg-green-600 group-hover:text-white transition-colors">
-                            {device.child_name}
+                            {device.child_name?.[0]?.toUpperCase()}
                           </div>
                           <div>
                             <div className="font-bold text-gray-800">{device.child_name}</div>
@@ -303,18 +336,10 @@ export default function DashboardPage() {
                   )}
                 </div>
               ) : (
-                /* STEP 2: VẼ BOUNDARY */
                 <div>
                   <div className="flex justify-between items-center mb-4 px-2 py-2 bg-green-50 rounded-lg border border-green-100">
-                    <div className="flex items-center gap-2">
-                       <span className="text-sm font-semibold text-green-800">Configuring for: {configTarget.child_name}</span>
-                    </div>
-                    <button 
-                      onClick={() => setConfigTarget(null)}
-                      className="text-xs font-bold text-gray-500 hover:text-red-500 uppercase tracking-tight"
-                    >
-                      Change Child
-                    </button>
+                    <span className="text-sm font-semibold text-green-800">Configuring for: {configTarget.child_name}</span>
+                    <button onClick={() => setConfigTarget(null)} className="text-xs font-bold text-gray-500 hover:text-red-500 uppercase tracking-tight">Change Child</button>
                   </div>
                   <Map 
                       mode="edit" 

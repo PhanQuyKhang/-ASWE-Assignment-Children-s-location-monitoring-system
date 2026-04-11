@@ -4,16 +4,12 @@ import { io } from 'socket.io-client';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
-// --- FIX LEAFLET MARKER ICONS ---
+// Fix Leaflet icons
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
 import markerShadow from 'leaflet/dist/images/marker-shadow.png';
 delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-    iconRetinaUrl: markerIcon2x,
-    iconUrl: markerIcon,
-    shadowUrl: markerShadow,
-});
+L.Icon.Default.mergeOptions({ iconRetinaUrl: markerIcon2x, iconUrl: markerIcon, shadowUrl: markerShadow });
 
 function MapResizer() {
     const map = useMap();
@@ -34,7 +30,6 @@ function MapClickHandler({ mode, drawType, setPoints, setCircleCenter }) {
                 if (drawType === 'POLYGON') {
                     setPoints(prev => [...prev, [e.latlng.lat, e.latlng.lng]]);
                 } else if (drawType === 'CIRCLE') {
-                    // Click để đặt tâm mới cho hình tròn
                     setCircleCenter([e.latlng.lat, e.latlng.lng]);
                 }
             }
@@ -43,11 +38,11 @@ function MapClickHandler({ mode, drawType, setPoints, setCircleCenter }) {
     return null;
 }
 
-export default function Map({ deviceId, mode, onSave }) {
-    const [position, setPosition] = useState([10.7626, 106.6602]);
+export default function Map({ deviceId, mode, onSave, initialPosition }) {
+    // Ưu tiên dùng vị trí ban đầu truyền từ Dashboard, nếu không có mới dùng Quận 10
+    const [position, setPosition] = useState(initialPosition || [10.7626, 106.6602]);
     const [isOnline, setIsOnline] = useState(false);
     
-    // --- DRAWING STATES ---
     const [drawType, setDrawType] = useState('POLYGON');
     const [zoneName, setZoneName] = useState('');
     const [scheduleType, setScheduleType] = useState('ALWAYS');
@@ -57,27 +52,31 @@ export default function Map({ deviceId, mode, onSave }) {
     const [selectedMonthDays, setSelectedMonthDays] = useState([]);
     const [specificDate, setSpecificDate] = useState('');
 
-    // Polygon & Circle Specific States
     const [polygonPoints, setPolygonPoints] = useState([]);
     const [circleCenter, setCircleCenter] = useState(null);
     const [radius, setRadius] = useState(100);
 
-    const daysOfWeek = [
-        { label: 'S', value: 0 }, { label: 'M', value: 1 }, { label: 'T', value: 2 },
-        { label: 'W', value: 3 }, { label: 'T', value: 4 }, { label: 'F', value: 5 }, { label: 'S', value: 6 }
-    ];
+    const daysOfWeek = [{ label: 'S', value: 0 }, { label: 'M', value: 1 }, { label: 'T', value: 2 }, { label: 'W', value: 3 }, { label: 'T', value: 4 }, { label: 'F', value: 5 }, { label: 'S', value: 6 }];
+
+    // Cập nhật position khi initialPosition thay đổi (khi user switch device)
+    useEffect(() => {
+        if (initialPosition) {
+            setPosition(initialPosition);
+        }
+    }, [initialPosition]);
 
     useEffect(() => {
-        if (mode !== 'edit') {
-            setPolygonPoints([]);
-            setCircleCenter(null);
-        }
+        if (!deviceId) return;
 
         const socket = io('http://localhost:3000', { withCredentials: true, transports: ['polling', 'websocket'] });
         socket.on('connect', () => setIsOnline(true));
-        socket.on('location_update', (data) => { if (data.lat && data.lon) setPosition([data.lat, data.lon]); });
+        socket.on('location_update', (data) => {
+            if (data.lat && data.lon) setPosition([data.lat, data.lon]);
+        });
+        socket.on('connect_error', () => setIsOnline(false));
+
         return () => socket.disconnect();
-    }, [deviceId, mode]);
+    }, [deviceId]);
 
     const handleInternalSave = () => {
         if (!zoneName) return alert("Please enter a Zone Name");
@@ -91,7 +90,6 @@ export default function Map({ deviceId, mode, onSave }) {
             days_of_week: scheduleType === 'WEEKLY' ? selectedDays : null,
             days_of_month: scheduleType === 'MONTHLY' ? selectedMonthDays : null,
             specific_date: scheduleType === 'ONCE' ? specificDate : null,
-            // Logic bóc tách theo drawType
             points: drawType === 'POLYGON' ? polygonPoints.map(p => ({ latitude: p[0], longitude: p[1] })) : null,
             radius: drawType === 'CIRCLE' ? Number(radius) : null,
             center_lat: drawType === 'CIRCLE' ? circleCenter?.[0] : null,
@@ -109,8 +107,6 @@ export default function Map({ deviceId, mode, onSave }) {
             {mode === 'edit' && (
                 <div className="w-full lg:w-80 bg-gray-50 p-4 rounded-xl border border-gray-200 flex flex-col gap-4 overflow-y-auto max-h-[500px]">
                     <h3 className="font-bold text-gray-700 uppercase text-xs">Boundary Settings</h3>
-                    
-                    {/* Switcher */}
                     <div className="flex p-1 bg-gray-200 rounded-lg">
                         <button onClick={() => setDrawType('POLYGON')} className={`flex-1 py-1.5 text-[10px] font-bold rounded-md ${drawType === 'POLYGON' ? 'bg-white shadow' : 'text-gray-500'}`}>POLYGON</button>
                         <button onClick={() => setDrawType('CIRCLE')} className={`flex-1 py-1.5 text-[10px] font-bold rounded-md ${drawType === 'CIRCLE' ? 'bg-white shadow' : 'text-gray-500'}`}>CIRCLE</button>
@@ -165,7 +161,7 @@ export default function Map({ deviceId, mode, onSave }) {
 
                     <div className="mt-4 flex flex-col gap-2">
                         <button onClick={handleInternalSave} className="w-full bg-blue-600 text-white py-2 rounded-lg font-bold text-sm shadow hover:bg-blue-700">Save Boundary</button>
-                        <button onClick={() => { setPolygonPoints([]); setCircleCenter(null); }} className="text-xs text-gray-400 hover:text-gray-600">Clear Drawing</button>
+                        <button onClick={() => { setPolygonPoints([]); setCircleCenter(null); }} className="text-xs text-gray-400 hover:text-gray-600 underline">Clear Drawing</button>
                     </div>
                 </div>
             )}
@@ -178,9 +174,7 @@ export default function Map({ deviceId, mode, onSave }) {
 
                 <MapContainer center={position} zoom={16} style={{ height: '100%', width: '100%' }}>
                     <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                    <Marker position={position}><Popup>Current: {deviceId}</Popup></Marker>
-
-                    {/* RENDERING POLYGON */}
+                    <Marker position={position}><Popup>Current position</Popup></Marker>
                     {drawType === 'POLYGON' && polygonPoints.length > 0 && <Polygon positions={polygonPoints} pathOptions={{ color: '#3b82f6', fillOpacity: 0.3 }} />}
                     {drawType === 'POLYGON' && mode === 'edit' && polygonPoints.map((p, idx) => (
                         <Marker key={`p-${idx}`} position={p} draggable={true} 
@@ -189,20 +183,15 @@ export default function Map({ deviceId, mode, onSave }) {
                                 newPts[idx] = [e.target.getLatLng().lat, e.target.getLatLng().lng];
                                 setPolygonPoints(newPts);
                             }, click: () => setPolygonPoints(prev => prev.filter((_, i) => i !== idx)) }}
-                            icon={L.divIcon({ className: 'bg-blue-500 w-3 h-3 rounded-full border-2 border-white' })} 
+                            icon={L.divIcon({ className: 'bg-blue-500 w-3 h-3 rounded-full border border-white' })} 
                         />
                     ))}
-
-                    {/* RENDERING CIRCLE */}
                     {drawType === 'CIRCLE' && circleCenter && (
                         <>
                             <Circle center={circleCenter} radius={radius} pathOptions={{ color: '#ef4444', fillOpacity: 0.2 }} />
-                            <Marker position={circleCenter} draggable={true}
-                                eventHandlers={{ dragend: (e) => setCircleCenter([e.target.getLatLng().lat, e.target.getLatLng().lng]) }}
-                            />
+                            <Marker position={circleCenter} draggable={true} eventHandlers={{ dragend: (e) => setCircleCenter([e.target.getLatLng().lat, e.target.getLatLng().lng]) }} />
                         </>
                     )}
-
                     <MapResizer />
                     <ChangeView center={position} />
                     <MapClickHandler mode={mode} drawType={drawType} setPoints={setPolygonPoints} setCircleCenter={setCircleCenter} />

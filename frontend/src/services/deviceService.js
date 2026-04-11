@@ -4,3 +4,8 @@ export const getMyDevices = async (userId) => {
   const response = await api.get(`/device/${userId}`);
   return response.data; 
 };
+
+export const getDeviceDetails = async (deviceId) => {
+  const response = await api.get(`/device/details/${deviceId}`);
+  return response.data;
+};
