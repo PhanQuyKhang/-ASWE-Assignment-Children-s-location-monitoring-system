@@ -279,7 +279,7 @@ export default function DashboardPage() {
               {!viewTarget ? (
                 <div className="p-4">
                   <div className="mini-card-label">Select Child</div>
-                  <h2 className="text-xl font-bold mb-4 text-gray-800">Whom do you want to track?</h2>
+                  <h2 className="text-xl font-bold mb-4 text-gray-800">Who do you want to track?</h2>
                   {loading ? (
                     <p className="text-gray-500 italic">Loading children list...</p>
                   ) : (
@@ -354,6 +354,7 @@ export default function DashboardPage() {
                       mode="edit" 
                       deviceId={configTarget.device_id} 
                       onSave={handleSaveBoundary}
+                      initialPosition={configTarget.last_lat && configTarget.last_lon ? [parseFloat(configTarget.last_lat), parseFloat(configTarget.last_lon)] : null}
                   />
                 </div>
               )}

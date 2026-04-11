@@ -73,8 +73,6 @@ export default function Map({ deviceId, mode, onSave, initialPosition }) {
         socket.on('connect', () => setIsOnline(true));
         socket.on('location_update', (data) => {
             console.log("📍 Nhận tin socket:", data);
-
-            // CHỈ CẬP NHẬT NẾU ID TRONG TIN NHẮN KHỚP VỚI ID COMPONENT ĐANG GIỮ
             if (data.device_id === deviceId) {
                 console.log("✅ Khớp ID, cập nhật Map cho:", deviceId);
                 if (data.lat && data.lon) {
