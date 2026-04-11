@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-
+import { Toaster, toast } from 'sonner';
 // Hooks
 import useAuth from '../hooks/useAuth';
 import useDevices from '../hooks/useDevice';
@@ -107,23 +107,32 @@ export default function DashboardPage() {
   }
 
   const handleSaveBoundary = async (finalBoundaryData) => {
+    const toastId = toast.loading("Saving boundary..."); 
     try {
       const deviceId = configTarget.device_id;
       
       const result = await createBoundary(deviceId, finalBoundaryData);
       
       if (result) {
-        alert(`Success: Boundary set for ${configTarget.child_name}`);
+        toast.success("Success!", {
+          id: toastId,
+          description: `Boundary "${finalBoundaryData.zone_name}" set for ${configTarget.child_name}`,
+          duration: 4000,
+        });
         setConfigTarget(null);
       }
     } catch (err) {
       const errorMsg = err.response?.data?.error || err.message;
-      alert("Failed to save: " + errorMsg);
+      toast.error("Failed to save", {
+        id: toastId,
+        description: errorMsg,
+      });
     }
   };
 
   return (
     <main className="dashboard-page">
+      <Toaster richColors position="top-right" />{}
       <section className="dashboard-shell">
         <header className="dashboard-header">
           <div className="dashboard-brand-row">
@@ -295,7 +304,7 @@ export default function DashboardPage() {
                 <div>
                    <div className="flex justify-between items-center mb-4 px-2 py-2 bg-blue-50 rounded-lg border border-blue-100">
                     <span className="text-sm font-semibold text-blue-800 ml-2">Tracking: {viewTarget.child_name}</span>
-                    <button onClick={() => setViewTarget(null)} className="text-xs font-bold text-gray-500 hover:text-red-500 uppercase tracking-tight">Switch Child</button>
+                    <button onClick={() => setViewTarget(null)} className="text-xs font-bold text-gray-500 hover:text-red-500 uppercase tracking-tight">Change Child</button>
                   </div>
                   <Map 
                       mode="view" 

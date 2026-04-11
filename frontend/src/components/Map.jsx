@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents, Polygon, Circle } from 'react-leaflet';
 import { io } from 'socket.io-client';
 import L from 'leaflet';
@@ -79,7 +80,7 @@ export default function Map({ deviceId, mode, onSave, initialPosition }) {
     }, [deviceId]);
 
     const handleInternalSave = () => {
-        if (!zoneName) return alert("Please enter a Zone Name");
+        if (!zoneName) return toast.warning("Missing Name", { description: "Please enter a Zone Name" });
         
         const boundaryData = {
             type: drawType,
@@ -96,8 +97,8 @@ export default function Map({ deviceId, mode, onSave, initialPosition }) {
             center_lon: drawType === 'CIRCLE' ? circleCenter?.[1] : null
         };
 
-        if (drawType === 'POLYGON' && (!boundaryData.points || boundaryData.points.length < 3)) return alert("Select at least 3 points");
-        if (drawType === 'CIRCLE' && !circleCenter) return alert("Click on map to set center");
+        if (drawType === 'POLYGON' && (!boundaryData.points || boundaryData.points.length < 3)) return toast.error("Invalid Polygon", { description: "Select at least 3 points" });
+        if (drawType === 'CIRCLE' && !circleCenter) return toast.error("Invalid Circle", { description: "Click on map to set center" });
 
         onSave(boundaryData);
     };
