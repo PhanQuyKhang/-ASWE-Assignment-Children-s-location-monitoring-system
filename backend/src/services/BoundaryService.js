@@ -106,6 +106,7 @@ function hasScheduleOverlap(newZone, activeZones, timezone) {
     if (newZone.schedule_type === "ALWAYS" && activeZones.length) return true;
 
     for (const zone of activeZones) {
+        if (!zone.is_active) continue;
         if (zone.schedule_type === "ALWAYS") return true;
 
         if (!hasTimeOverlap(newZone.start_time, newZone.duration, zone.start_time, zone.duration)) {
@@ -135,11 +136,11 @@ function hasScheduleOverlap(newZone, activeZones, timezone) {
     // FALLBACK (accurate)
     const newOcc = generateOccurrences(newZone, 30, timezone);
     for (const zone of activeZones) {
+        if (!zone.is_active) continue;
         const existingOcc = generateOccurrences(zone, 30, timezone);
         for (const a of newOcc) {
             for (const b of existingOcc) {
                 if (a.startMs < b.endMs && b.startMs < a.endMs) {
-                    console.log(zone);
                     return true;
                 }
             }
@@ -288,7 +289,6 @@ const BoundaryService = {
             points,
             specific_date
         } = data;
-        console.log(device_id);
         // ===== DEVICE =====
         const device = await DeviceModel.findbyID(device_id);
         if (!device) throw new Error("Device not found");
@@ -310,10 +310,10 @@ const BoundaryService = {
         }
 
         // ===== EXISTING =====
-        const activeZones = await BoundaryModel.getActiveZones(device_id);
-        if (activeZones.length > 0){
+        const zones = await BoundaryModel.getZonesbyDevice(device_id);
+        if (zones.length > 0){
             // ===== SCHEDULE =====
-            if (hasScheduleOverlap(data, activeZones, device.timezone)) {
+            if (hasScheduleOverlap(data, zones, device.timezone)) {
                 throw new Error("Schedule overlap detected");
             }
         }
@@ -332,39 +332,38 @@ const BoundaryService = {
     },
 
     async check(log) {
-        const { device_id, timestamp, latitude, longitude, accuracy, speed, heading, altitude, odometer, battery_level, activity_type } = log;
-
+        const { device_id, timestamp, lat, lon, battery_level, activity_type} = log;
         // ===== DEVICE =====
         const device = await DeviceModel.findbyID(device_id);
         if (!device) throw new Error("Device not found");
-        if (device.status === "INACTIVE") throw new Error("Device inactive");
+        if (device.status === "INACTIVE") return;
 
-        const activeZones = await BoundaryModel.getActiveZones(device_id);
-        if (!activeZones || activeZones.length === 0) return;
+        const zones = await BoundaryModel.getZonesbyDevice(device_id);
+        if (!zones || zones.length === 0) return;
         
-        const location = turf.point([longitude, latitude])
-        for (const zone of activeZones){
+        const location = turf.point([lon, lat])
+        for (const zone of zones){
             //Check if in boundary
             let test_1 = false;
             let test_2 = false;
-            const {zone_id, schedule_type, start_time, duration, days_of_month, days_of_week} = zone;
+            if (!zone.is_active) continue;
             if (zone.type == "CIRCLE"){
-                const info = await BoundaryModel.getCircleZone(zone_id);
-                if (!info){
-                    throw new Error ("Can not find information about zone: ");
+                const {center_lat, center_lon} = zone;
+                if (!center_lat || !center_lon){
+                    throw new Error ("Can not find information about zone");
                 }
-                test_1 = checkCircleZonebyMath(info, latitude, longitude);
+                test_1 = checkCircleZonebyMath(zone, lat, lon);
                 if (test_1 == false){
-                    test_2 = checkCircleZonebyTurf(info, location);
+                    test_2 = checkCircleZonebyTurf(zone, location);
                 }
             } else if (zone.type == "POLYGON"){
-                const info = await BoundaryModel.getPolygonZone(zone_id);
-                if (!info){
-                    throw new Error ("Can not find information about zone: ");
+                const {points} = zone;
+                if (!points || points.length === 0){
+                    throw new Error ("Can not find information about zone");
                 }
-                test_1 = checkPolygonZonebyMath(info, latitude, longitude);
+                test_1 = checkPolygonZonebyMath(points, lat, lon);
                 if (test_1 == false){
-                    test_2 = checkPolygonZonebyTurf(info, location);
+                    test_2 = checkPolygonZonebyTurf(points, location);
                 }
             }
             if (test_1 || test_2) continue; 
@@ -376,8 +375,8 @@ const BoundaryService = {
                     child_name: device.child_name,
                     zone_id: zone.zone_id,
                     zone_name: zone.zone_name,
-                    lat: latitude,
-                    lon: longitude,
+                    lat: lat,
+                    lon: lon,
                     battery: battery_level,
                     timestamp: timestamp,
                     activity_type: activity_type
@@ -398,10 +397,9 @@ const BoundaryService = {
         return activeZones;
     },
     async getZonebyUser(user_id) {
-        const activeDevices = await DeviceModel.getActiveDevices(user_id);
+        const devices = await DeviceModel.getActiveDevices(user_id);
         let result = [];
-
-        for (const device in activeDevices){
+        for (const device of devices){
             const zones = await BoundaryModel.getZonesbyDevice(device.device_id);
             result.push(...zones);
         }

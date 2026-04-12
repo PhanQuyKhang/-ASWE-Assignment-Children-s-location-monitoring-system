@@ -42,8 +42,8 @@ const LogService = {
                 lat: data.latitude,
                 lon: data.longitude,
                 battery: data.battery,
-                timestamp: data.timestamp
-
+                timestamp: data.timestamp,
+                activity_type: data.activity_type
             });
         } else {
             throw new Error("Log create and update failed"); 

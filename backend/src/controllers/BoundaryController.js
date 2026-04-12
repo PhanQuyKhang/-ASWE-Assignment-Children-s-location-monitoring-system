@@ -20,12 +20,7 @@ const BoundaryController = {
             const userId = req.user.user_id;
             const {device_id} = req.params;
             const result = await BoundaryService.getZonebyDevice(userId, device_id);
-            if (result == null) {
-                return res.status(200).json({ 
-                success: true,
-                data: "No boundary found for this device"
-            });
-            } 
+
             return res.status(200).json({ 
                 success: true,
                 data: result
@@ -39,15 +34,8 @@ const BoundaryController = {
     },
     getZonebyUser: async (req, res) => { 
         try {
-            console.log("hi");
             const userId = req.user.user_id;
             const result = await BoundaryService.getZonebyUser(userId);
-            if (result == null) {
-                return res.status(200).json({ 
-                success: true,
-                data: "No boundary found for this user"
-            });
-            } 
             return res.status(200).json({ 
                 success: true,
                 data: result

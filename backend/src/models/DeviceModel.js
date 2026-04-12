@@ -12,7 +12,6 @@ class Device {
     }
     static async updateDevice(data) {
         const {timestamp, latitude, longitude, device_id} = data;
-        console.log(data);
         const [result] = await sql`
             UPDATE devices
             SET 
@@ -78,6 +77,7 @@ class Device {
                 SELECT * 
                 FROM devices 
                 WHERE user_id = ${userId} 
+                ORDER BY (status = 'ACTIVE') DESC
             `;
             
             if (!rows || rows.length === 0) {
