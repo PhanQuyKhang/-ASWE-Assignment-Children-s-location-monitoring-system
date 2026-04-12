@@ -114,7 +114,7 @@ export default function Map({ deviceId, mode, onSave, initialPosition }) {
     return (
         <div className="flex flex-col lg:flex-row gap-4 h-full">
             {mode === 'edit' && (
-                <div className="w-full lg:w-80 bg-gray-50 p-4 rounded-xl border border-gray-200 flex flex-col gap-4 overflow-y-auto max-h-[500px]">
+                <div className="w-full lg:w-80 bg-gray-50 p-4 rounded-xl border border-gray-200 flex flex-col gap-4 overflow-y-auto max-h-125">
                     <h3 className="font-bold text-gray-700 uppercase text-xs">Boundary Settings</h3>
                     <div className="flex p-1 bg-gray-200 rounded-lg">
                         <button onClick={() => setDrawType('POLYGON')} className={`flex-1 py-1.5 text-[10px] font-bold rounded-md ${drawType === 'POLYGON' ? 'bg-white shadow' : 'text-gray-500'}`}>POLYGON</button>
@@ -175,8 +175,8 @@ export default function Map({ deviceId, mode, onSave, initialPosition }) {
                 </div>
             )}
 
-            <div className="flex-1 relative min-h-[400px] lg:h-[500px] rounded-xl overflow-hidden border shadow-lg">
-                <div className="absolute top-2 right-2 z-[1000] bg-white/90 px-3 py-1 rounded-full text-[10px] font-bold shadow-sm flex items-center gap-2">
+            <div className="flex-1 relative min-h-100 lg:h-125 rounded-xl overflow-hidden border shadow-lg">
+                <div className="absolute top-2 right-2 z-1000 bg-white/90 px-3 py-1 rounded-full text-[10px] font-bold shadow-sm flex items-center gap-2">
                     <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></span>
                     {isOnline ? 'CONNECTED' : 'OFFLINE'}
                 </div>
