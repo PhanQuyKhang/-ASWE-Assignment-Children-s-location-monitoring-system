@@ -6,7 +6,8 @@ const authMiddleware = require('../middleware/authMiddleware');
 // @route   POST /device
 // @desc    Add a new tracking device and link it to the user
 router.post('/', authMiddleware, DeviceController.addDevice);
-router.get('/:userId', authMiddleware, DeviceController.getActiveDevices);
+router.get('/active/:userId', authMiddleware, DeviceController.getDevices);
+
 //router.post('/:deviceId', validateDeviceId, authMiddleware, DeviceController.getDevicebyId);
 
 

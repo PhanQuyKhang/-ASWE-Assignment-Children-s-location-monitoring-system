@@ -29,6 +29,15 @@ const DeviceService = {
             console.error('Error getting device:', error);
             throw error;
         }
+    },
+    getDevices: async (userId) => {
+        try {
+            const result = await DeviceModel.getDevices(userId);
+            return result;
+        } catch (error) {
+            console.error('Error getting device:', error);
+            throw error;
+        }
     }
 };
 

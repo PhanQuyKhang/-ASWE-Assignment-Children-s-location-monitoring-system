@@ -156,6 +156,42 @@ class Boundary {
             throw error;
         }
     }
+    //ALL Zone
+    static async getZonesbyDevice(device_id) {
+        try {
+            if (!device_id) {
+                throw new Error("deviceID is required");
+            }
+
+            const rows = await sql`
+                    SELECT 
+                        z.*,
+                        c.center_lat,
+                        c.center_lon,
+                        c.radius,
+                        p.sequence_order,
+                        p.latitude,
+                        p.longitude
+                    FROM zones z
+                    LEFT JOIN circles c ON z.zone_id = c.zone_id
+                    LEFT JOIN poly_points p ON z.zone_id = p.zone_id
+                    WHERE z.device_id = ${device_id}
+                    ORDER BY z.zone_id, p.sequence_order
+            `;
+            
+
+            if (!rows || rows.length === 0) {
+                console.log(`No zones found for device: ${device_id}`);
+                return [];
+            }
+
+            return rows;
+
+        } catch (error) {
+            console.error("❌ DB Error in getZones:", error.message);
+            throw error;
+        }
+    }
     
 
 }

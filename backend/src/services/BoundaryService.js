@@ -385,9 +385,28 @@ const BoundaryService = {
             }
         }
         return;
-    }
-    
+    },
 
+    async getZonebyDevice(user_id, device_id) {
+        const device = await DeviceModel.findbyID(device_id);
+        if (!device) throw new Error("Device not found");
+        if (device.status === "INACTIVE") throw new Error("Device inactive");
+        if (device.user_id !== user_id){
+            throw new Error("No authorize to see this device");
+        }
+        const activeZones = await BoundaryModel.getZonesbyDevice(device_id);
+        return activeZones;
+    },
+    async getZonebyUser(user_id) {
+        const activeDevices = await DeviceModel.getActiveDevices(user_id);
+        let result = [];
+
+        for (const device in activeDevices){
+            const zones = await BoundaryModel.getZonesbyDevice(device.device_id);
+            result.push(...zones);
+        }
+        return result;
+    }
 };
 LocalMegaphone.on('DEVICE_UPDATES', async (event) => {
     try {
