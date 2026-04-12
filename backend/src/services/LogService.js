@@ -1,8 +1,8 @@
 const LogModel = require('../models/LogModel')
 const DeviceModel = require('../models/DeviceModel')
-const BoundaryService = require('../services/BoundaryService');
 const LocalMegaphone = require('../services/LocalMegaphone');
 const { validate: validateUUID } = require('uuid');
+const { DateTime } = require('luxon');
 
 const LogService = {
     processLog: async (data) => { 
@@ -45,7 +45,6 @@ const LogService = {
                 timestamp: data.timestamp
 
             });
-            //BoundaryService.check(data);
         } else {
             throw new Error("Log create and update failed"); 
         }
@@ -65,12 +64,12 @@ const LogService = {
         if (device.user_id !== user_id) {
             throw new Error("Not authorized to view this device");
         }
-        const latestLog = await LogModel.getLatestbyID(device_id);
+        let latestLog = await LogModel.getLatestbyID(device_id);
         if (!latestLog) {
             throw new Error("No logs found for this device");
         }
-        console.log(latestLog.user_id);
-
+        latestLog.update_at = DateTime.fromJSDate(latestLog.update_at).setZone(device.timezone).toISO();
+        latestLog.timestamp = DateTime.fromJSDate(latestLog.timestamp).setZone(device.timezone).toISO();
         return latestLog;
     }
       

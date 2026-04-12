@@ -1,16 +1,13 @@
 const DeviceModel = require('../models/DeviceModel');
 const BoundaryModel = require('../models/BoundaryModel');
-//const AlertModel = require('../models/AlertModel');
-
 const { DateTime } = require('luxon');
 const turf = require('@turf/turf');
 const LocalMegaphone = require('../services/LocalMegaphone');
-const { TypeOverrides } = require('pg');
 
 // --------------------
 // HELPERS
 // --------------------
-
+//
 const toMinutes = (t) => {
     const [h, m] = t.split(':').map(Number);
     return h * 60 + m;
@@ -25,12 +22,21 @@ const hasArrayOverlap = (a, b) => {
 
 const hasTimeOverlap = (aStart, aDur, bStart, bDur) => {
     const aS = toMinutes(aStart);
-    const aE = aS + aDur;
-
     const bS = toMinutes(bStart);
-    const bE = bS + bDur;
 
-    return Math.max(aS, bS) < Math.min(aE, bE);
+    const aD = Number(aDur);
+    const bD = Number(bDur);
+
+    if (aS < bS){
+        const distance = 1440 - bS + aS;
+        if (bD <= distance && aD + aS <= bS) return false;
+    }
+    if (aS > bS){
+        const distance = 1440 - aS + bS;
+        if (aD <= distance && bD + bS <= aS) return false;
+    }
+
+    return true;
 };
 
 // --------------------
@@ -40,16 +46,12 @@ const hasTimeOverlap = (aStart, aDur, bStart, bDur) => {
 function buildDateTime(date, zone, timezone) {
     const [h, m] = zone.start_time.split(':').map(Number);
 
-    const start = DateTime.fromObject(
-        {
-            year: date.getFullYear(),
-            month: date.getMonth() + 1,
-            day: date.getDate(),
-            hour: h,
-            minute: m
-        },
-        { zone: timezone } 
-    );
+    const start = date.set({ 
+        hour: h, 
+        minute: m,
+        second: 0,
+        millisecond: 0
+    });
 
     const startMs = start.toUTC().toMillis();
     const durationMs = (zone.duration || 0) * 60000;
@@ -60,12 +62,13 @@ function buildDateTime(date, zone, timezone) {
     };
 }
 
-function generateOccurrences(zone, rangeDays = 30, timezone) {
+function generateOccurrences(zone, rangeDays = 30, timezone, baseDate = new Date()) {   
     const results = [];
-    const now = DateTime.now().setZone(timezone);
+    const now = DateTime.fromJSDate(baseDate).setZone(timezone);
 
     if (zone.schedule_type === "ONCE") {
-        return [buildDateTime(new Date(zone.specific_date), zone, timezone)];
+        const specificDate = DateTime.fromISO(zone.specific_date, { zone: timezone });
+        return [buildDateTime(specificDate, zone, timezone)];
     }
 
 
@@ -74,18 +77,18 @@ function generateOccurrences(zone, rangeDays = 30, timezone) {
         switch (zone.schedule_type) {
             case "ALWAYS":
             case "DAILY":
-                results.push(buildDateTime(date.toJSDate(), zone, timezone));
+                results.push(buildDateTime(date, zone, timezone));
                 break;
 
             case "WEEKLY":
                 if (zone.days_of_week.includes(date.weekday % 7)) {
-                    results.push(buildDateTime(date.toJSDate(), zone, timezone));
+                    results.push(buildDateTime(date, zone, timezone));
                 }
                 break;
 
             case "MONTHLY":
                 if (zone.days_of_month.includes(date.day)) {
-                    results.push(buildDateTime(date.toJSDate(), zone, timezone));
+                    results.push(buildDateTime(date, zone, timezone));
                 }
                 break;
         }
@@ -112,19 +115,16 @@ function hasScheduleOverlap(newZone, activeZones, timezone) {
         // SAME TYPE QUICK CHECK
         if (zone.schedule_type === newZone.schedule_type) {
             if (zone.schedule_type === "DAILY") {
-                console.log(zone);
                 return true;
             }
             if (zone.schedule_type === "WEEKLY") {
                 if (hasArrayOverlap(zone.days_of_week, newZone.days_of_week)) {
-                console.log(zone);
                 return true;
             }
             }
 
             if (zone.schedule_type === "MONTHLY") {
                 if (hasArrayOverlap(zone.days_of_month, newZone.days_of_month)) {
-                console.log(zone);
                 return true;
             }
             }
@@ -181,7 +181,7 @@ function validatePolygon(points) {
 
 function checkCircleZonebyTurf(center_point, location){
     const center = [center_point.center_lon, center_point.center_lat];
-    const options = {steps: center_point.radius*100, units: "meters", properties: { foo: "bar" } };
+    const options = {steps: Math.min(center_point.radius*100, 128), units: "meters", properties: { foo: "bar" } };
     const polygon = turf.circle(center, center_point.radius, options);
     return turf.booleanPointInPolygon(location, polygon);
 }
@@ -209,9 +209,9 @@ function checkCircleZonebyMath(center_point, latitude, longitude ) {
   return distance <= center_point.radius;
 }
 function checkPolygonZonebyTurf(points, location){
-    points.sort((a, b) => a.sequence_order - b.sequence_order);
+    const sorted = [...points].sort((a, b) => a.sequence_order - b.sequence_order);
 
-    const coords = points.map(p => [
+    const coords = sorted.map(p => [
         p.longitude,
         p.latitude
     ]);
@@ -225,17 +225,17 @@ function checkPolygonZonebyTurf(points, location){
 }
 
 function checkPolygonZonebyMath(points, latitude, longitude) {
-    points.sort((a, b) => a.sequence_order - b.sequence_order);
+    const sorted = [...points].sort((a, b) => a.sequence_order - b.sequence_order);
     const x = longitude;
     const y = latitude;
 
     let inside = false;
 
-    for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
-        const xi = points[i].longitude;
-        const yi = points[i].latitude;
-        const xj = points[j].longitude;
-        const yj = points[j].latitude;
+    for (let i = 0, j = sorted.length - 1; i < sorted.length; j = i++) {
+        const xi = sorted[i].longitude;
+        const yi = sorted[i].latitude;
+        const xj = sorted[j].longitude;
+        const yj = sorted[j].latitude;
 
         // --- Boundary check: point on vertex ---
         if ((x === xi && y === yi) || (x === xj && y === yj)) {
@@ -261,61 +261,17 @@ function checkPolygonZonebyMath(points, latitude, longitude) {
 
     return inside;
 }
-function isTimeInRange(now, start, durationMinutes) {
-    const end = start.plus({ minutes: durationMinutes });
-
-    if (end.day === start.day) {
-        return now >= start && now <= end;
-    }
-
-    return (
-        (now >= start && now <= start.endOf("day")) ||
-        (now >= start.startOf("day") && now <= end)
-    );
-}
 function isNowInSchedule(zone, timestamp, timezone) {
-    const now = DateTime.fromJSDate(timestamp).setZone(timezone);
+    if (zone.schedule_type == "ALWAYS") return true;
+    
+    const logDate = new Date(timestamp);
+    const logMs = logDate.getTime(); 
+    const baseDate = new Date(logMs - 86400000); //lastday for midnight
+    const existingOcc = generateOccurrences(zone, 3, timezone, baseDate); //create for 3 days
 
-    if (zone.schedule_type === "ALWAYS") return true;
-
-    const start = DateTime.fromFormat(
-        zone.start_time,
-        "HH:mm",
-        { zone: timezone }
-    ).set({
-        year: now.year,
-        month: now.month,
-        day: now.day
-    });
-
-    const end = start.plus({ minutes: zone.duration });
-
-    // ===== ONCE =====
-    if (zone.schedule_type === "ONCE") {
-        const date = DateTime.fromISO(zone.specific_date, { zone: timezone });
-
-        if (!date.hasSame(now, "day")) return false;
-
-        return isTimeInRange(now, start, zone.duration);
+    for (const Occ of existingOcc){
+        if (Occ.startMs <= logMs && Occ.endMs >= logMs) return true;
     }
-
-    // ===== DAILY =====
-    if (zone.schedule_type === "DAILY") {
-        return isTimeInRange(now, start, zone.duration);
-    }
-
-    // ===== WEEKLY =====
-    if (zone.schedule_type === "WEEKLY") {
-        if (!zone.days_of_week.includes(now.weekday % 7)) return false;
-        return isTimeInRange(now, start, zone.duration);
-    }
-
-    // ===== MONTHLY =====
-    if (zone.schedule_type === "MONTHLY") {
-        if (!zone.days_of_month.includes(now.day)) return false;
-        return isTimeInRange(now, start, zone.duration);
-    }
-
     return false;
 }
 
@@ -324,7 +280,7 @@ function isNowInSchedule(zone, timestamp, timezone) {
 // --------------------
 
 const BoundaryService = {
-
+    
     async createZone(data, user_id, device_id ) {
         const {
             type,
@@ -376,8 +332,7 @@ const BoundaryService = {
     },
 
     async check(log) {
-        return ;
-        /*const { device_id, timestamp, latitude, longitude, accuracy, speed, heading, altitude, odometer, battery_level, activity_type } = log;
+        const { device_id, timestamp, latitude, longitude, accuracy, speed, heading, altitude, odometer, battery_level, activity_type } = log;
 
         // ===== DEVICE =====
         const device = await DeviceModel.findbyID(device_id);
@@ -385,55 +340,60 @@ const BoundaryService = {
         if (device.status === "INACTIVE") throw new Error("Device inactive");
 
         const activeZones = await BoundaryModel.getActiveZones(device_id);
-        if (!activeZones){
-            return;
-        }
+        if (!activeZones || activeZones.length === 0) return;
+        
         const location = turf.point([longitude, latitude])
-
-        let test_1 = false;
-        let test_2 = false;
         for (const zone of activeZones){
             //Check if in boundary
+            let test_1 = false;
+            let test_2 = false;
             const {zone_id, schedule_type, start_time, duration, days_of_month, days_of_week} = zone;
             if (zone.type == "CIRCLE"){
                 const info = await BoundaryModel.getCircleZone(zone_id);
                 if (!info){
                     throw new Error ("Can not find information about zone: ");
                 }
-                test_1 = checkCircleZonebyTurf(info, location);
-                test_2 = checkCircleZonebyMath(info, latitude, longitude)
+                test_1 = checkCircleZonebyMath(info, latitude, longitude);
+                if (test_1 == false){
+                    test_2 = checkCircleZonebyTurf(info, location);
+                }
             } else if (zone.type == "POLYGON"){
                 const info = await BoundaryModel.getPolygonZone(zone_id);
                 if (!info){
                     throw new Error ("Can not find information about zone: ");
                 }
-                test_1 = checkPolygonZonebyTurf(info, location);
-                test_2 = checkPolygonZonebyMath(info, latitude, longitude)
+                test_1 = checkPolygonZonebyMath(info, latitude, longitude);
+                if (test_1 == false){
+                    test_2 = checkPolygonZonebyTurf(info, location);
+                }
             }
-            if (test_1 && test_2) return; 
+            if (test_1 || test_2) continue; 
 
             //Check if in scheduled
-            if (isNowInSchedule) { //later do 
+            if (isNowInSchedule(zone, timestamp, device.timezone)) { 
                 LocalMegaphone.emit('DEVICE_OUT_ZONE', {
                     device_id: device_id,
                     child_name: device.child_name,
                     zone_id: zone.zone_id,
                     zone_name: zone.zone_name,
-                    data: {
-                        lat: latitude,
-                        lon: longitude,
-                        battery: battery_level,
-                        timestamp: timestamp,
-                        activity_type: activity_type
-                    }
+                    lat: latitude,
+                    lon: longitude,
+                    battery: battery_level,
+                    timestamp: timestamp,
+                    activity_type: activity_type
                 });
-                AlertModel.create()
-                //Mail
             }
-        }*/ 
+        }
+        return;
     }
     
 
 };
-
+LocalMegaphone.on('DEVICE_UPDATES', async (event) => {
+    try {
+        await BoundaryService.check(event);
+    } catch (error) {
+        console.error("Failed to check boundary of log:", error);
+    }
+});
 module.exports = BoundaryService;
