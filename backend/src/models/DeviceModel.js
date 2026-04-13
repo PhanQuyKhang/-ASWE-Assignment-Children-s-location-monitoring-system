@@ -12,7 +12,6 @@ class Device {
     }
     static async updateDevice(data) {
         const {timestamp, latitude, longitude, device_id} = data;
-        console.log(data);
         const [result] = await sql`
             UPDATE devices
             SET 
@@ -38,7 +37,7 @@ class Device {
 
     static async addDevice(data) {
         try {
-            const { userId, childName, timeZone } = data;
+            const { userId, childName, timezone } = data;
             
             // Execute the insert query using Neon serverless sql template
             const [result] = await sql`
@@ -49,7 +48,7 @@ class Device {
             return result || null;
         } catch (error) {
             console.error("❌ DB Error in addDevice:", error);
-            return [];
+            throw error; 
         }
     }
     static async getActiveDevices(userId) {
@@ -58,6 +57,27 @@ class Device {
                 SELECT * 
                 FROM devices 
                 WHERE user_id = ${userId} AND status = 'ACTIVE'
+            `;
+            
+            if (!rows || rows.length === 0) {
+                console.log(`No active devices found for user: ${userId}`);
+                return [];
+            }
+                
+            return rows;
+            
+        } catch (error) {
+            console.error("❌ DB Error in getActiveDevices:", error);
+            return [];
+        }
+    }
+    static async getDevices(userId) {
+        try {
+            const rows = await sql`
+                SELECT * 
+                FROM devices 
+                WHERE user_id = ${userId} 
+                ORDER BY (status = 'ACTIVE') DESC
             `;
             
             if (!rows || rows.length === 0) {

@@ -78,84 +78,77 @@ class Boundary {
             return zone;
         });
     }
-
-    // =============================
-    // GET ACTIVE ZONES
-    // =============================
-    static async getActiveZones(device_id) {
-        try {
-            if (!device_id) {
-                throw new Error("deviceID is required");
-            }
-
-            const rows = await sql`
-                SELECT * 
-                FROM zones 
-                WHERE device_id = ${device_id}
-                AND is_active = true
-            `;
-
-            if (!rows || rows.length === 0) {
-                console.log(`No active zones found for device: ${device_id}`);
-                return [];
-            }
-
-            return rows;
-
-        } catch (error) {
-            console.error("❌ DB Error in getActiveZones:", error.message);
-            throw error;
+    //ALL Zone
+    static async getZonesbyDevice(device_id) {
+    try {
+        if (!device_id) {
+            throw new Error("deviceID is required");
         }
-    }
 
-    static async getCircleZone(zone_id) {
-        try {
-            if (!zone_id) {
-                throw new Error("zone_id is required");
-            }
+        const rows = await sql`
+            SELECT 
+                z.*,
+                c.center_lat,
+                c.center_lon,
+                c.radius,
+                p.sequence_order,
+                p.latitude,
+                p.longitude
+            FROM zones z
+            LEFT JOIN circles c ON z.zone_id = c.zone_id
+            LEFT JOIN poly_points p ON z.zone_id = p.zone_id
+            WHERE z.device_id = ${device_id}
+            ORDER BY  z.is_active DESC, z.zone_id, p.sequence_order
+        `;
 
-            const rows = await sql`
-                SELECT * 
-                FROM circles 
-                WHERE zone_id = ${zone_id}
-            `;
-
-            if (!rows || rows.length === 0) {
-                console.log(`No circle zone found for zone: ${zone_id}`);
-                return [];
-            }
-
-            return rows;
-
-        } catch (error) {
-            console.error("❌ DB Error in getCircleZone:", error.message);
-            throw error;
+        if (!rows || rows.length === 0) {
+            return [];
         }
-    }
-    static async getPolygonZone(zone_id) {
-        try {
-            if (!zone_id) {
-                throw new Error("zone_id is required");
+
+        const zoneMap = {};
+
+        for (const row of rows) {
+            if (!zoneMap[row.zone_id]) {
+                zoneMap[row.zone_id] = {
+                    zone_id: row.zone_id,
+                    device_id: row.device_id,
+                    zone_name: row.zone_name,
+                    type: row.type,
+                    is_active: row.is_active,
+                    schedule_type: row.schedule_type,
+                    start_time: row.start_time,
+                    days_of_week: row.days_of_week,
+                    days_of_month: row.days_of_month,
+                    specific_date: row.specific_date,
+                    duration: row.duration,
+
+                    // circle
+                    center_lat: row.center_lat,
+                    center_lon: row.center_lon,
+                    radius: row.radius,
+
+                    // polygon
+                    points: []
+                };
             }
 
-            const rows = await sql`
-                SELECT * 
-                FROM poly_points 
-                WHERE zone_id = ${zone_id}
-            `;
-
-            if (!rows || rows.length === 0) {
-                console.log(`No polygon zone found for zone: ${zone_id}`);
-                return [];
+            // collect polygon points
+            if (row.type === "POLYGON" && row.latitude && row.longitude) {
+                zoneMap[row.zone_id].points.push({
+                    latitude: row.latitude,
+                    longitude: row.longitude,
+                    sequence_order: row.sequence_order
+                });
             }
-
-            return rows;
-
-        } catch (error) {
-            console.error("❌ DB Error in getPolygonZone:", error.message);
-            throw error;
         }
+
+        return Object.values(zoneMap);
+
+    } catch (error) {
+        console.error("❌ DB Error in getZones:", error.message);
+        throw error;
     }
+}
     
 
 }

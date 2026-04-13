@@ -26,7 +26,6 @@ const LogController = {
             }
 
             const latestLog = await LogService.getLatestbyID(device_id, userId);
-            console.log(latestLog);
 
             return res.status(200).json({ 
                 success: true,

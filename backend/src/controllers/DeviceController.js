@@ -55,6 +55,22 @@ const DeviceController = {
                 message: 'Server Error. Could not get device.' 
             });
         }
+    },
+    getDevices: async (req, res) => {
+        try {
+            const userId = req.user.user_id;
+            const result = await DeviceService.getDevices(userId);
+            return res.status(201).json({
+                success: true,
+                data: result
+            });
+        } catch (error) {
+            console.error('Error getting device:', error);
+            return res.status(500).json({ 
+                success: false, 
+                message: 'Server Error. Could not get device.' 
+            });
+        }
     }
 };
 

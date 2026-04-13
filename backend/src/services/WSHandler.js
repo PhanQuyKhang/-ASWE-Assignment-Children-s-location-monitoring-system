@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const DeviceModel = require('../models/DeviceModel');
 const LocalMegaphone = require('../services/LocalMegaphone'); 
+const { DateTime } = require('luxon');
 
 module.exports = (io) => { 
     
@@ -9,15 +10,26 @@ module.exports = (io) => {
     // ==========================================
     LocalMegaphone.on('DEVICE_UPDATES', (event) => {
         try {
-            console.log("HII");
-            const roomName = `room_device_${event.device_id}`;
-            
+            if (event.isOlder) return;
+            const roomName = `room_device_${event.device_id}`;            
+            event.timestamp = DateTime.fromJSDate(event.timestamp).toUTC().toISO();
             io.to(roomName).emit('location_update', event);
             
         } catch (error) {
             console.error("Failed to process local event:", error);
         }
     });
+    LocalMegaphone.on('DEVICE_OUT_ZONE', (event) => {
+        try {
+            const roomName = `room_device_${event.device_id}`;
+            event.timestamp = DateTime.fromJSDate(event.timestamp).setZone( event.timezone).toLocaleString(DateTime.DATETIME_MED);
+            io.to(roomName).emit('alert_device_out_of_zone', event);
+            
+        } catch (error) {
+            console.error("Failed to process local event:", error);
+        }
+    });
+
 
     // ==========================================
     // PART 2: SOCKET SECURITY & ROOM ROUTING
@@ -31,7 +43,6 @@ module.exports = (io) => {
     io.use(async (socket, next) => {
         try {
             const token = socket.handshake.headers.token || getCookie(socket.handshake.headers.cookie,'clms_access_token');
-            console.log(token)
             if (!token) throw new Error("No token provided");
             
             const decoded = jwt.verify(token, process.env.JWT_SECRET);

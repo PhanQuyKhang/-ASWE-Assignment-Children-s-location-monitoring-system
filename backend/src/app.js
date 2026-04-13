@@ -42,8 +42,8 @@ app.use(cookieParser());
 
 app.use('/auth', AuthRouter);
 app.use('/log', LogRouter);
-app.use('/device', DeviceRouter);
 app.use('/device/boundary', BoundaryRoute);
+app.use('/device', DeviceRouter);
 
 //----------------------------SERVER-------------------------------------------
 

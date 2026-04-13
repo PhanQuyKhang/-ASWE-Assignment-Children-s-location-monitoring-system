@@ -22,7 +22,7 @@ class Log {
             SELECT *
             FROM device_logs
             WHERE device_id = ${device_id}
-            ORDER By log_id DESC
+            ORDER BY timestamp DESC
             LIMIT 1
         `;
 
