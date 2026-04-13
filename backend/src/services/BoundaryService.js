@@ -332,7 +332,7 @@ const BoundaryService = {
     },
 
     async check(log) {
-        const { device_id, timestamp, lat, lon, battery_level, activity_type} = log;
+        const { device_id, timestamp, lat, lon, battery_level, activity_type, isOlder, timezone} = log;
         // ===== DEVICE =====
         const device = await DeviceModel.findbyID(device_id);
         if (!device) throw new Error("Device not found");
@@ -372,6 +372,7 @@ const BoundaryService = {
             if (isNowInSchedule(zone, timestamp, device.timezone)) { 
                 LocalMegaphone.emit('DEVICE_OUT_ZONE', {
                     device_id: device_id,
+                    user_id: device.user_id,
                     child_name: device.child_name,
                     zone_id: zone.zone_id,
                     zone_name: zone.zone_name,
@@ -379,11 +380,14 @@ const BoundaryService = {
                     lon: lon,
                     battery: battery_level,
                     timestamp: timestamp,
-                    activity_type: activity_type
+                    timezone: timezone,
+                    activity_type: activity_type,
+                    isOlder: isOlder
+
                 });
             }
         }
-        return;
+        return true;
     },
 
     async getZonebyDevice(user_id, device_id) {

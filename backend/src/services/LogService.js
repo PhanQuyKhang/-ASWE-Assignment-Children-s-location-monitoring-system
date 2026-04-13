@@ -13,43 +13,46 @@ const LogService = {
         if (device.status == "INACTIVE"){
             throw new Error("Device inactive"); 
         }
-
-        const lastLog = await LogModel.getLatestbyID(data.device_id);
         
-        if (lastLog) {
+        if (device.last_updated) {
             const timeDiff = Math.abs(
-                data.timestamp.getTime() - new Date(lastLog.timestamp)
+                data.timestamp.getTime() - new Date(device.last_updated)
             );
             if (
-                Number(lastLog.latitude) === data.latitude &&
-                Number(lastLog.longitude) === data.longitude &&
+                Number(device.last_lat) === data.latitude &&
+                Number(device.last_lon) === data.longitude &&
                 timeDiff < 5000)
             {
-                return lastLog.id; 
+                return; 
             }
         }
-
-        const [log_id, updateResult] = await Promise.all([
-            LogModel.create(data),
-            DeviceModel.updateDevice(data)
-        ]);
-        
-        if (log_id && updateResult){
-            LocalMegaphone.emit('DEVICE_UPDATES', {
-                device_id: data.device_id,
-                child_name: device.child_name,
-                
-                lat: data.latitude,
-                lon: data.longitude,
-                battery: data.battery,
-                timestamp: data.timestamp,
-                activity_type: data.activity_type
-            });
+        const isOlder = device.last_updated && data.timestamp <= new Date(device.last_updated);
+        if (isOlder) {
+            const createdLogId = await LogModel.create(data);
+            if (!createdLogId) throw new Error("Log creation failed");
         } else {
-            throw new Error("Log create and update failed"); 
+            const [createdLogId, updateResult] = await Promise.all([
+                LogModel.create(data),
+                DeviceModel.updateDevice(data)
+            ]);            
+            if (!createdLogId || !updateResult) {
+                throw new Error("Log create and update failed"); 
+            }
         }
+        
+        LocalMegaphone.emit('DEVICE_UPDATES', {
+            device_id: data.device_id,
+            child_name: device.child_name,
+            timezone: device.timezone,
+            lat: data.latitude,
+            lon: data.longitude,
+            battery: data.battery,
+            timestamp: data.timestamp,
+            activity_type: data.activity_type,
+            isOlder: isOlder
+        });
 
-        return log_id;
+        return true;
     },
 
     getLatestbyID: async (device_id, user_id) => {
@@ -68,8 +71,8 @@ const LogService = {
         if (!latestLog) {
             throw new Error("No logs found for this device");
         }
-        latestLog.update_at = DateTime.fromJSDate(latestLog.update_at).setZone(device.timezone).toISO();
-        latestLog.timestamp = DateTime.fromJSDate(latestLog.timestamp).setZone(device.timezone).toISO();
+        latestLog.updated_at = DateTime.fromJSDate(latestLog.updated_at).setZone( device.timezone).toLocaleString(DateTime.DATETIME_MED);
+        latestLog.timestamp = DateTime.fromJSDate(latestLog.timestamp).setZone( device.timezone).toLocaleString(DateTime.DATETIME_MED);
         return latestLog;
     }
       

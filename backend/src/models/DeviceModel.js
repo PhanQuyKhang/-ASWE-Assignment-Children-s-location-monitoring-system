@@ -37,7 +37,7 @@ class Device {
 
     static async addDevice(data) {
         try {
-            const { userId, childName, timeZone } = data;
+            const { userId, childName, timezone } = data;
             
             // Execute the insert query using Neon serverless sql template
             const [result] = await sql`
@@ -48,7 +48,7 @@ class Device {
             return result || null;
         } catch (error) {
             console.error("❌ DB Error in addDevice:", error);
-            return [];
+            throw error; 
         }
     }
     static async getActiveDevices(userId) {

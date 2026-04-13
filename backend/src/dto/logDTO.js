@@ -16,13 +16,7 @@ function validateLogPayload(data) {
     }
 
     const coords = loc.coords || {};
-    
-    const accuracy = Number(coords.accuracy);
-   
-    /*if (accuracy >=20) {
-        throw new Error("Invalid Log: Low accuracy");
-    }*/
-   
+
     
     if (coords.latitude === undefined || coords.longitude === undefined) {
         throw new Error("Invalid Log: Missing latitude or longitude");
@@ -41,19 +35,37 @@ function validateLogPayload(data) {
 
 
     let speed = 0;
-    let activity_type = null;
+    let activity_type = "UNKNOWN";
 
-    if (coords.speed !== undefined) {
-        speed = Number(coords.speed);
+    if (coords.speed !== undefined && coords.speed !== null) {
+        const rawSpeed = Number(coords.speed);
 
-        if (isNaN(speed)) {
-        throw new Error("Invalid Log: Invalid speed");
+        if (isNaN(rawSpeed)) {
+            throw new Error("Invalid Log: Invalid speed");
         }
 
-        if (speed <= 0.5) activity_type = "still";
-        else if (speed < 1.8) activity_type = "walking";
-        else activity_type = "in_vehicle";
+        if (rawSpeed < 0) {
+            speed = 0; 
+            activity_type = "UNKNOWN";
+        } else {
+            speed = rawSpeed;
+            if (speed <= 0.5) {
+                activity_type = "STILL";
+            } else if (speed < 1.8) {
+                activity_type = "ON_FOOT"; 
+            } else {
+                activity_type = "IN_VEHICLE"; 
+            }
+        }
     }
+
+    const accuracy = Number(coords.accuracy);
+    if (accuracy < 0 || accuracy > 150) {
+        throw new Error(`Invalid Log: Unreliable accuracy (${accuracy}m)`);
+    }
+
+    let heading = Number(coords.heading || 0);
+    if (heading < 0) heading = 0;
 
     const timestamp = new Date(loc.timestamp);
     if (isNaN(timestamp.getTime())) {
@@ -65,9 +77,9 @@ function validateLogPayload(data) {
     if (loc.battery?.level !== undefined) {
         battery_level = Number(loc.battery.level);
 
-        // if (isNaN(battery_level) || battery_level < 0 || battery_level > 1) {
-        //     throw new Error("Invalid Log: Invalid battery level");
-        // }
+        if ( battery_level < 0 ) battery_level = 0;
+        if ( battery_level > 1 ) battery_level = 1;
+
         battery_level *=100;
     }
     

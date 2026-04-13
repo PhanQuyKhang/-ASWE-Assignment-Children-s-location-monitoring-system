@@ -1,8 +1,9 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const UserModel = require('../models/UserModel');
-const { sendPasswordResetEmail } = require('./MailService');
+const { sendPasswordResetEmail, sendAlertEmail } = require('./MailService');
 const { buildGoogleAuthUrl, exchangeGoogleCode } = require('./GoogleAuthService');
+const LocalMegaphone = require('../services/LocalMegaphone'); 
 
 const TOKEN_EXPIRES_IN = process.env.JWT_EXPIRY || '7d';
 const JWT_SECRET = process.env.JWT_SECRET || 'clms-dev-secret-change-me';
@@ -206,5 +207,14 @@ const AuthService = {
     return { success: true };
   },
 };
+
+LocalMegaphone.on('DEVICE_OUT_ZONE', async (event) => {
+    try {
+        const user = await UserModel.findById(event.user_id);
+        await sendAlertEmail({ to: user.email, fname: user.fname, event: event});
+    } catch (error) {
+        console.error("Failed to send alert mail:", error);
+    }
+});
 
 module.exports = AuthService;
