@@ -3,6 +3,26 @@ const DeviceModel = require('../models/DeviceModel')
 const LocalMegaphone = require('../services/LocalMegaphone');
 const { validate: validateUUID } = require('uuid');
 const { DateTime } = require('luxon');
+const formatLogDates = (log, timezone) => {
+    if (!log) return log;
+
+    const tz = timezone || 'UTC';
+
+    if (log.timestamp) {
+        log.timestamp = DateTime.fromJSDate(log.timestamp)
+            .setZone(tz)
+            .toLocaleString(DateTime.DATETIME_MED);
+    }
+
+    if (log.updated_at) {
+        log.updated_at = DateTime.fromJSDate(log.updated_at)
+            .setZone(tz)
+            .toLocaleString(DateTime.DATETIME_MED);
+    }
+
+    return log;
+};
+
 
 const LogService = {
     processLog: async (data) => { 
@@ -74,6 +94,46 @@ const LogService = {
         latestLog.updated_at = DateTime.fromJSDate(latestLog.updated_at).setZone( device.timezone).toLocaleString(DateTime.DATETIME_MED);
         latestLog.timestamp = DateTime.fromJSDate(latestLog.timestamp).setZone( device.timezone).toLocaleString(DateTime.DATETIME_MED);
         return latestLog;
+    },
+
+    getLogsbyDevice: async (device_id, user_id, options = {}) => {
+        const { limit = 20, cursor } = options;
+
+        if (!validateUUID(device_id)) {
+            throw new Error("Invalid UUID");
+        }
+
+        const safeLimit = Math.min(limit, 50);
+
+        const device = await DeviceModel.findbyID(device_id);
+        if (!device) {
+            throw new Error("Device not found");
+        }
+        if (device.user_id !== user_id) {
+            throw new Error("Not authorized to view this device");
+        }
+
+        const logs = await LogModel.getLogsByDevice(
+            device_id,
+            safeLimit,
+            cursor ? new Date(cursor) : null
+        );
+
+        const nextCursor =
+            logs.length > 0
+                ? logs[logs.length - 1].timestamp.toISOString()
+                : null;
+
+        const formattedLogs = logs.map(log =>
+            formatLogDates(log, device.timezone)
+        );
+
+        
+
+        return {
+            logs: formattedLogs,
+            nextCursor,
+        };
     }
       
 };

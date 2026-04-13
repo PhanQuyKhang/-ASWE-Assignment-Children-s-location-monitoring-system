@@ -14,7 +14,6 @@ router.get(
     validateDeviceId,
     LogController.getLatestLogbyDevice
 );
-// 3. Lấy N lịch sử vị trí (Ví dụ: /history/123?limit=20)
-//router.get('/history/:deviceid', TelemetryController.getLocationLogs);*/
+router.get('/history/:device_id', authMiddleware, validateDeviceId, LogController.getLogsbyDevice);
 
 module.exports = router;

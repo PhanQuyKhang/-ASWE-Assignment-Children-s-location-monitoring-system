@@ -72,6 +72,7 @@ const DeviceController = {
             });
         }
     }
+    
 };
 
 module.exports = DeviceController;
