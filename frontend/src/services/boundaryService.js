@@ -21,3 +21,8 @@ export const createBoundary = async (deviceId, boundaryData) => {
   const response = await api.post(`/device/boundary/create/${deviceId}`, payload);
   return response.data;
 };
+
+export const getBoundaries = async (deviceId) => {
+  const response = await api.get(`/device/boundary/${deviceId}`);
+  return response.data;
+};

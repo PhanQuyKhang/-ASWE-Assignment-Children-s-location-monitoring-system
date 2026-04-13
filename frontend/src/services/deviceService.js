@@ -1,11 +1,6 @@
 import api from './api';
 
-export const getMyDevices = async (userId) => {
-  const response = await api.get(`/device/${userId}`);
+export const getMyDevices = async () => {
+  const response = await api.get(`/device`);
   return response.data; 
-};
-
-export const getDeviceDetails = async (deviceId) => {
-  const response = await api.get(`/device/details/${deviceId}`);
-  return response.data;
 };

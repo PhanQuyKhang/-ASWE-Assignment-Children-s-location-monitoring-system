@@ -4,6 +4,7 @@ import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents, Polygon, 
 import { io } from 'socket.io-client';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { getBoundaries } from '../services/boundaryService';
 
 // Fix Leaflet icons
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
@@ -39,7 +40,7 @@ function MapClickHandler({ mode, drawType, setPoints, setCircleCenter }) {
     return null;
 }
 
-export default function Map({ deviceId, mode, onSave, initialPosition }) {
+export default function Map({ deviceId, childName, mode, onSave, initialPosition }) {
     // Ưu tiên dùng vị trí ban đầu truyền từ Dashboard, nếu không có mới dùng Quận 10
     const [position, setPosition] = useState(initialPosition || [10.7626, 106.6602]);
     const [isOnline, setIsOnline] = useState(false);
@@ -56,10 +57,28 @@ export default function Map({ deviceId, mode, onSave, initialPosition }) {
     const [polygonPoints, setPolygonPoints] = useState([]);
     const [circleCenter, setCircleCenter] = useState(null);
     const [radius, setRadius] = useState(100);
+    const [existingZones, setExistingZones] = useState([]);
 
     const daysOfWeek = [{ label: 'S', value: 0 }, { label: 'M', value: 1 }, { label: 'T', value: 2 }, { label: 'W', value: 3 }, { label: 'T', value: 4 }, { label: 'F', value: 5 }, { label: 'S', value: 6 }];
 
-    // Cập nhật position khi initialPosition thay đổi (khi user switch device)
+    // Helper to format schedule validity for popups
+    const getScheduleInfo = (zone) => {
+        if (zone.schedule_type === 'ALWAYS') return "Always active";
+        const timePart = zone.start_time ? ` at ${zone.start_time.slice(0, 5)}` : "";
+        const durPart = zone.duration ? ` for ${zone.duration} mins` : "";
+        const combinedTime = timePart + durPart;
+
+        switch (zone.schedule_type) {
+            case 'DAILY': return `Daily${combinedTime}`;
+            case 'WEEKLY': return `Weekly on ${zone.days_of_week?.join(', ')}${combinedTime}`;
+            case 'MONTHLY': return `Monthly on days ${zone.days_of_month?.join(', ')}${combinedTime}`;
+            case 'ONCE': 
+                const date = zone.specific_date ? new Date(zone.specific_date).toLocaleDateString() : "";
+                return `Once on ${date}${combinedTime}`;
+            default: return zone.schedule_type;
+        }
+    };
+
     useEffect(() => {
         if (initialPosition) {
             setPosition(initialPosition);
@@ -69,12 +88,20 @@ export default function Map({ deviceId, mode, onSave, initialPosition }) {
     useEffect(() => {
         if (!deviceId) return;
 
+        const fetchExisting = async () => {
+            try {
+                const res = await getBoundaries(deviceId);
+                if (res.success) setExistingZones(res.data);
+            } catch (err) {
+                console.log("Error fetching zones: ", err);
+            }
+        };
+        fetchExisting();
+
         const socket = io('http://localhost:3000', { withCredentials: true, transports: ['polling', 'websocket'] });
         socket.on('connect', () => setIsOnline(true));
         socket.on('location_update', (data) => {
-            console.log("📍 Nhận tin socket:", data);
             if (data.device_id === deviceId) {
-                console.log("✅ Khớp ID, cập nhật Map cho:", deviceId);
                 if (data.lat && data.lon) {
                     setPosition([data.lat, data.lon]);
                 }
@@ -183,7 +210,51 @@ export default function Map({ deviceId, mode, onSave, initialPosition }) {
 
                 <MapContainer center={position} zoom={16} style={{ height: '100%', width: '100%' }}>
                     <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                    <Marker position={position}><Popup>Current position</Popup></Marker>
+                    
+                    {existingZones.map((zone) => (
+                        <React.Fragment key={zone.zone_id}>
+                            {zone.type === 'CIRCLE' && zone.center_lat && (
+                                <Circle 
+                                    center={[parseFloat(zone.center_lat), parseFloat(zone.center_lon)]} 
+                                    radius={zone.radius}
+                                    pathOptions={{ color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2 }}
+                                >
+                                    <Popup>
+                                        <div className="text-xs">
+                                            <div className="font-bold text-green-700">{zone.zone_name}</div>
+                                            <div><b>Type:</b> Circle</div>
+                                            <div><b>Radius:</b> {zone.radius}m</div>
+                                            <div><b>Validity:</b> {getScheduleInfo(zone)}</div>
+                                        </div>
+                                    </Popup>
+                                </Circle>
+                            )}
+                            {zone.type === 'POLYGON' && zone.points && (
+                                <Polygon 
+                                    positions={zone.points.sort((a,b) => a.sequence_order - b.sequence_order).map(p => [parseFloat(p.latitude), parseFloat(p.longitude)])}
+                                    pathOptions={{ color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2 }}
+                                >
+                                    <Popup>
+                                        <div className="text-xs">
+                                            <div className="font-bold text-green-700">{zone.zone_name}</div>
+                                            <div><b>Type:</b> Polygon</div>
+                                            <div><b>Validity:</b> {getScheduleInfo(zone)}</div>
+                                        </div>
+                                    </Popup>
+                                </Polygon>
+                            )}
+                        </React.Fragment>
+                    ))}
+
+                    <Marker position={position}>
+                        <Popup>
+                            <div className="text-sm">
+                                <b>Child:</b> {childName || "Unknown"} <br/>
+                                <span className="text-[10px] text-gray-400">ID: {deviceId}</span>
+                            </div>
+                        </Popup>
+                    </Marker>
+                    
                     {drawType === 'POLYGON' && polygonPoints.length > 0 && <Polygon positions={polygonPoints} pathOptions={{ color: '#3b82f6', fillOpacity: 0.3 }} />}
                     {drawType === 'POLYGON' && mode === 'edit' && polygonPoints.map((p, idx) => (
                         <Marker key={`p-${idx}`} position={p} draggable={true} 

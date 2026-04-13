@@ -308,7 +308,8 @@ export default function DashboardPage() {
                   </div>
                   <Map 
                       mode="view" 
-                      deviceId={viewTarget.device_id} 
+                      deviceId={viewTarget.device_id}
+                      childName={viewTarget.child_name} 
                       // Truyền vị trí cuối cùng từ DB vào làm vị trí mặc định ban đầu
                       initialPosition={viewTarget.last_lat && viewTarget.last_lon ? [parseFloat(viewTarget.last_lat), parseFloat(viewTarget.last_lon)] : null}
                   />
@@ -354,6 +355,7 @@ export default function DashboardPage() {
                       mode="edit" 
                       deviceId={configTarget.device_id} 
                       onSave={handleSaveBoundary}
+                      childName={configTarget.child_name}
                       initialPosition={configTarget.last_lat && configTarget.last_lon ? [parseFloat(configTarget.last_lat), parseFloat(configTarget.last_lon)] : null}
                   />
                 </div>
