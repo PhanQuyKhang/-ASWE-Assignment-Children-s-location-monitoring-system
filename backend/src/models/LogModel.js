@@ -28,6 +28,32 @@ class Log {
 
         return result;
     }
+    static async getLogsByDevice(device_id, limit = 20, cursor = null) {
+        let query;
+
+        if (cursor) {
+            query = sql`
+                SELECT *
+                FROM device_logs
+                WHERE device_id = ${device_id}
+                AND timestamp < ${cursor}
+                ORDER BY timestamp DESC
+                LIMIT ${limit}
+            `;
+        } else {
+            query = sql`
+                SELECT *
+                FROM device_logs
+                WHERE device_id = ${device_id}
+                ORDER BY timestamp DESC
+                LIMIT ${limit}
+            `;
+        }
+
+        const results = await query;
+        return results;
+    }
+
 
 }
 
