@@ -132,7 +132,7 @@ export default function DashboardPage() {
 
   return (
     <main className="dashboard-page">
-      <Toaster richColors position="top-right" />{}
+      <Toaster richColors position="top-right" closeButton />{}
       <section className="dashboard-shell">
         <header className="dashboard-header">
           <div className="dashboard-brand-row">

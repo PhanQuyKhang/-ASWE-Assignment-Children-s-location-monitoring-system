@@ -59,6 +59,7 @@ export default function Map({ deviceId, childName, mode, onSave, initialPosition
     const [radius, setRadius] = useState(100);
     const [existingZones, setExistingZones] = useState([]);
     const [childStatus, setChildStatus] = useState('SAFE');
+    const activeOutToastIdRef = React.useRef(null);
 
     const daysOfWeek = [{ label: 'S', value: 0 }, { label: 'M', value: 1 }, { label: 'T', value: 2 }, { label: 'W', value: 3 }, { label: 'T', value: 4 }, { label: 'F', value: 5 }, { label: 'S', value: 6 }];
 
@@ -130,8 +131,9 @@ export default function Map({ deviceId, childName, mode, onSave, initialPosition
         socket.on('alert_device_enter_of_zone', (data) => {
             if (data.device_id === deviceId) {
                 setChildStatus('SAFE');
-                if (data.latitude && data.longitude) {
-                    setPosition([data.latitude, data.longitude]);
+                if (activeOutToastIdRef.current) {
+                    toast.dismiss(activeOutToastIdRef.current);
+                    activeOutToastIdRef.current = null;
                 }
                 toast.success(`${childName} is safe`, { description: `${childName} entered ${data.zone_name || 'safe zone'}` });
             }
@@ -140,18 +142,21 @@ export default function Map({ deviceId, childName, mode, onSave, initialPosition
         socket.on('alert_device_out_of_zone', (data) => {
             if (data.device_id === deviceId) {
                 setChildStatus('DANGER');
-                if (data.latitude && data.longitude) {
-                    console.log("🚨 Emergency location updated:", data.latitude, data.longitude);
-                    setPosition([data.latitude, data.longitude]);
-                }
-                toast.error(`🚨 EMERGENCY!`, { description: `${childName} left ${data.zone_name || 'safe zone'}!`, duration: Infinity });
+                const id = toast.error(`🚨 EMERGENCY!`, { 
+                    description: `${childName} left ${data.zone_name || 'safe zone'}!`, 
+                    duration: Infinity 
+                });
+                activeOutToastIdRef.current = id;
             }
         });
 
         socket.on('alert_device_out_of_signal', (data) => {
             if (data.device_id === deviceId) {
                 setChildStatus('OFFLINE');
-                toast.warning(`Signal Lost`, { description: `Lost connection to ${childName}'s device.` });
+                toast.warning(`Signal Lost`, { description: `Lost connection to ${childName}'s device.`, action: {
+                        label: 'Dismiss',
+                        onClick: () => {}
+                    }});
             }
         });
 
@@ -292,6 +297,7 @@ export default function Map({ deviceId, childName, mode, onSave, initialPosition
                     ))}
 
                     <Marker 
+                        key={`${deviceId}-${childStatus}`} 
                         position={position}
                         icon={L.divIcon({
                             className: 'custom-marker',
