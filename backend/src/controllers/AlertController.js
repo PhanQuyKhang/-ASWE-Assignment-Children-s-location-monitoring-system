@@ -11,7 +11,7 @@ const AlertController = {
                 return res.status(400).json({ message: "Device ID is required" });
             }
 
-            const latestAlert = await AlertService.getLatestbyID(device_id, userId);
+            const latestAlert = await AlertService.getLatestAlertbyDevice(device_id, userId);
 
             return res.status(200).json({ 
                 success: true,
@@ -34,7 +34,7 @@ const AlertController = {
 
             const { limit, cursor } = req.query;
 
-            const result = await AlertSAlervice.getAlertsbyDevice(
+            const result = await AlertService.getAlertsbyDevice(
                 device_id,
                 userId,
                 {
@@ -45,7 +45,7 @@ const AlertController = {
 
             return res.status(200).json({ 
                 success: true,
-                data: result.logs,
+                data: result.alerts,
                 nextCursor: result.nextCursor
             });
             
@@ -70,7 +70,7 @@ const AlertController = {
 
             return res.status(200).json({ 
                 success: true,
-                data: result.logs,
+                data: result.alerts,
                 nextCursor: result.nextCursor
             });
             

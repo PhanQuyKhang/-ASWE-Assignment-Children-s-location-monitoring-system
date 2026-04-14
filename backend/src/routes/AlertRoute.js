@@ -12,6 +12,6 @@ router.get(
     AlertController.getLatestAlertbyDevice
 );
 router.get('/history/:device_id', authMiddleware, validateDeviceId, AlertController.getAlertsbyDevice);
-router.get('/', authMiddleware, validateDeviceId, AlertController.getAlertsbyUser);
+router.get('/', authMiddleware, AlertController.getAlertsbyUser);
 
 module.exports = router;
