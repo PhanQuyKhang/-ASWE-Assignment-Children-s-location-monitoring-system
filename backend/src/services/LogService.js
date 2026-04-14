@@ -45,7 +45,8 @@ const LogService = {
             {
                 return; 
             }
-        }
+        }         
+        
         const isOlder = device.last_updated && data.timestamp <= new Date(device.last_updated);
         if (isOlder) {
             const createdLogId = await LogModel.create(data);
@@ -59,13 +60,24 @@ const LogService = {
                 throw new Error("Log create and update failed"); 
             }
         }
+
+        //check xem cái mới tạo có timestamp < now + 90s và đang noSIGNAL thì đổi thành ACTIVE
+        const now = Date.now(); // số mili-giây hiện tại
+        const logTime = new Date(data.timestamp).getTime(); // số mili-giây của log
+
+        // Nếu thiết bị NOSIGNAL và log mới không quá 90 giây so với hiện tại
+        if (device.status === "NOSIGNAL" && (now - logTime) <= 90 * 1000) {
+            await DeviceModel.activeDevice(device.device_id);
+            // Có thể tạo alert "SIGNAL_RESTORED" ở đây
+        }
+
         
         LocalMegaphone.emit('DEVICE_UPDATES', {
             device_id: data.device_id,
             child_name: device.child_name,
             timezone: device.timezone,
-            lat: data.latitude,
-            lon: data.longitude,
+            latitude: data.latitude,
+            longitude: data.longitude,
             battery: data.battery,
             timestamp: data.timestamp,
             activity_type: data.activity_type,

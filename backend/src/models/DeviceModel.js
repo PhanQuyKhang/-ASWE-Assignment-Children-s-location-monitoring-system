@@ -25,6 +25,30 @@ class Device {
 
         return result || null;
     }
+    static async activeDevice(device_id) {
+        const [result] = await sql`
+            UPDATE devices
+            SET 
+            status = 'ACTIVE'
+            WHERE device_id = ${device_id} 
+            AND status != 'ACTIVE'
+            RETURNING *;
+        `;
+
+        return result || null;
+    }
+    static async changeBoundaryStatusDevice(device_id, boundary_status) {
+        const [result] = await sql`
+            UPDATE devices
+            SET 
+                boundary_status = ${boundary_status}
+            WHERE device_id = ${device_id} 
+            AND status != 'INACTIVE'
+            RETURNING *;
+        `;
+
+        return result || null;
+    }
     static async statusbyID(device_id) {
         const [result] = await sql`
             SELECT status
@@ -56,7 +80,7 @@ class Device {
             const rows = await sql`
                 SELECT * 
                 FROM devices 
-                WHERE user_id = ${userId} AND status = 'ACTIVE'
+                WHERE user_id = ${userId} AND status != 'INACTIVE'
             `;
             
             if (!rows || rows.length === 0) {
