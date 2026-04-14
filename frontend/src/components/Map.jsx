@@ -153,10 +153,7 @@ export default function Map({ deviceId, childName, mode, onSave, initialPosition
         socket.on('alert_device_out_of_signal', (data) => {
             if (data.device_id === deviceId) {
                 setChildStatus('OFFLINE');
-                toast.warning(`Signal Lost`, { description: `Lost connection to ${childName}'s device.`, action: {
-                        label: 'Dismiss',
-                        onClick: () => {}
-                    }});
+                toast.warning(`Signal Lost`, { description: `Lost connection to ${childName}'s device.`});
             }
         });
 
