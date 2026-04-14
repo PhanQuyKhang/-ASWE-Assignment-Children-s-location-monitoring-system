@@ -41,6 +41,50 @@ function MapClickHandler({ mode, drawType, setPoints, setCircleCenter }) {
     return null;
 }
 
+function RecenterButton({ position }) {
+    const map = useMap();
+    
+    const handleRecenter = () => {
+        if (position) {
+            map.flyTo(position, map.getZoom(), {
+                animate: true,
+                duration: 1
+            });
+        }
+    };
+
+    return (
+        <div className="leaflet-bottom leaflet-right" style={{ marginBottom: '30px', marginRight: '10px' }}>
+            <div className="leaflet-control" style={{ border: 'none', background: 'none' }}>
+                <button
+                    onClick={handleRecenter}
+                    title="Recenter to child"
+                    className="bg-white hover:bg-gray-50 text-blue-600 p-0 rounded-full shadow-xl border border-gray-200 flex items-center justify-center transition-all active:scale-90"
+                    style={{ 
+                        width: '45px', 
+                        height: '45px', 
+                        cursor: 'pointer'
+                    }}
+                >
+                    <svg 
+                        xmlns="http://www.w3.org/2000/svg" 
+                        viewBox="0 0 24 24" 
+                        fill="none" 
+                        stroke="currentColor" 
+                        strokeWidth="2.5" 
+                        strokeLinecap="round" 
+                        strokeLinejoin="round" 
+                        className="w-6 h-6"
+                    >
+                        <circle cx="12" cy="12" r="3"></circle>
+                        <path d="M3 12h3m12 0h3M12 3v3m0 12v3"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    );
+}
+
 export default function Map({ deviceId, childName, mode, onSave, initialPosition }) {
     const [position, setPosition] = useState(initialPosition || [10.7626, 106.6602]);
     const [isOnline, setIsOnline] = useState(false);
@@ -257,7 +301,7 @@ export default function Map({ deviceId, childName, mode, onSave, initialPosition
 
                 <MapContainer center={position} zoom={16} style={{ height: '100%', width: '100%' }}>
                     <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                    
+                    <RecenterButton position={position} />
                     {existingZones.map((zone) => (
                         <React.Fragment key={zone.zone_id}>
                             {zone.type === 'CIRCLE' && zone.center_lat && (
