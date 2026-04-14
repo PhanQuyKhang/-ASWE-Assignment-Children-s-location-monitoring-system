@@ -6,6 +6,8 @@ const LogRouter = require('./routes/LogRoute');
 const AuthRouter = require('./routes/AuthRoute');
 const DeviceRouter = require('./routes/DeviceRoute'); // IMPORT NEW ROUTE
 const BoundaryRoute = require('./routes/BoundaryRoute'); 
+const AlertRoute = require('./routes/AlertRoute'); 
+
 const http = require('http'); 
 const { Server } = require('socket.io'); 
 const { sql, testConnection } = require('./database/connection'); 
@@ -44,6 +46,7 @@ app.use('/auth', AuthRouter);
 app.use('/log', LogRouter);
 app.use('/device/boundary', BoundaryRoute);
 app.use('/device', DeviceRouter);
+app.use('/alert', AlertRoute);
 
 //----------------------------SERVER-------------------------------------------
 
@@ -65,7 +68,7 @@ server.listen(PORT, async () => {
     const isDbConnected = await testConnection();
 
     if (isDbConnected) {
-        //startHeartbeatMonitor();
+        startHeartbeatMonitor();
     } else {
         console.error("⚠️ CẢNH BÁO: Database không kết nối được! Các tính năng liên quan đến DB sẽ lỗi.");
     }
