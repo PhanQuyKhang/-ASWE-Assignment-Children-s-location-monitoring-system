@@ -5,6 +5,7 @@ import { io } from 'socket.io-client';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { getBoundaries } from '../services/boundaryService';
+import { getLatestAlert } from '../services/alertService';
 
 // Fix Leaflet icons
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
@@ -41,7 +42,6 @@ function MapClickHandler({ mode, drawType, setPoints, setCircleCenter }) {
 }
 
 export default function Map({ deviceId, childName, mode, onSave, initialPosition }) {
-    // Ưu tiên dùng vị trí ban đầu truyền từ Dashboard, nếu không có mới dùng Quận 10
     const [position, setPosition] = useState(initialPosition || [10.7626, 106.6602]);
     const [isOnline, setIsOnline] = useState(false);
     
@@ -58,10 +58,10 @@ export default function Map({ deviceId, childName, mode, onSave, initialPosition
     const [circleCenter, setCircleCenter] = useState(null);
     const [radius, setRadius] = useState(100);
     const [existingZones, setExistingZones] = useState([]);
+    const [childStatus, setChildStatus] = useState('SAFE');
 
     const daysOfWeek = [{ label: 'S', value: 0 }, { label: 'M', value: 1 }, { label: 'T', value: 2 }, { label: 'W', value: 3 }, { label: 'T', value: 4 }, { label: 'F', value: 5 }, { label: 'S', value: 6 }];
 
-    // Helper to format schedule validity for popups
     const getScheduleInfo = (zone) => {
         if (zone.schedule_type === 'ALWAYS') return "Always active";
         const timePart = zone.start_time ? ` at ${zone.start_time.slice(0, 5)}` : "";
@@ -77,6 +77,13 @@ export default function Map({ deviceId, childName, mode, onSave, initialPosition
                 return `Once on ${date}${combinedTime}`;
             default: return zone.schedule_type;
         }
+    };
+
+    // Helper to get marker color based on status
+    const getStatusColor = () => {
+        if (childStatus === 'DANGER') return '#ef4444'; // Red
+        if (childStatus === 'OFFLINE') return '#9ca3af'; // Gray
+        return '#3b82f6'; // Blue (Safe)
     };
 
     useEffect(() => {
@@ -98,21 +105,59 @@ export default function Map({ deviceId, childName, mode, onSave, initialPosition
         };
         fetchExisting();
 
+        const fetchStatus = async () => {
+            try {
+                const res = await getLatestAlert(deviceId);
+                if (res.success && res.data) {
+                    if (res.data.alert_type === 'EXIT') setChildStatus('DANGER');
+                    else if (res.data.alert_type === 'ENTER') setChildStatus('SAFE');
+                    else if (res.data.alert_type === 'OUT_OF_SIGNAL') setChildStatus('OFFLINE');
+                }
+            } catch (err) { console.log("No status history found."); }
+        };
+        fetchStatus();
+
         const socket = io('http://localhost:3000', { withCredentials: true, transports: ['polling', 'websocket'] });
         socket.on('connect', () => setIsOnline(true));
+        
         socket.on('location_update', (data) => {
-            if (data.device_id === deviceId) {
-                if (data.lat && data.lon) {
-                    setPosition([data.lat, data.lon]);
-                }
-            } else {
-                console.log("⏭️ Bỏ qua tin của thiết bị khác:", data.device_id);
+            console.log("📍 Location update received:", data);
+            if (data.device_id === deviceId && data.latitude && data.longitude) {
+                setPosition([data.latitude, data.longitude]);
             }
         });
-        socket.on('connect_error', () => setIsOnline(false));
 
+        socket.on('alert_device_enter_of_zone', (data) => {
+            if (data.device_id === deviceId) {
+                setChildStatus('SAFE');
+                if (data.latitude && data.longitude) {
+                    setPosition([data.latitude, data.longitude]);
+                }
+                toast.success(`${childName} is safe`, { description: `${childName} entered ${data.zone_name || 'safe zone'}` });
+            }
+        });
+
+        socket.on('alert_device_out_of_zone', (data) => {
+            if (data.device_id === deviceId) {
+                setChildStatus('DANGER');
+                if (data.latitude && data.longitude) {
+                    console.log("🚨 Emergency location updated:", data.latitude, data.longitude);
+                    setPosition([data.latitude, data.longitude]);
+                }
+                toast.error(`🚨 EMERGENCY!`, { description: `${childName} left ${data.zone_name || 'safe zone'}!`, duration: Infinity });
+            }
+        });
+
+        socket.on('alert_device_out_of_signal', (data) => {
+            if (data.device_id === deviceId) {
+                setChildStatus('OFFLINE');
+                toast.warning(`Signal Lost`, { description: `Lost connection to ${childName}'s device.` });
+            }
+        });
+
+        socket.on('connect_error', () => setIsOnline(false));
         return () => socket.disconnect();
-    }, [deviceId]);
+    }, [deviceId, childName]);
 
     const handleInternalSave = () => {
         if (!zoneName) return toast.warning("Missing Name", { description: "Please enter a Zone Name" });
@@ -246,11 +291,20 @@ export default function Map({ deviceId, childName, mode, onSave, initialPosition
                         </React.Fragment>
                     ))}
 
-                    <Marker position={position}>
+                    <Marker 
+                        position={position}
+                        icon={L.divIcon({
+                            className: 'custom-marker',
+                            html: `<div style="background-color: ${getStatusColor()}; width: 14px; height: 14px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 5px rgba(0,0,0,0.3);"></div>`,
+                            iconSize: [14, 14],
+                            iconAnchor: [7, 7]
+                        })}
+                    >
                         <Popup>
                             <div className="text-sm">
                                 <b>Child:</b> {childName || "Unknown"} <br/>
-                                <span className="text-[10px] text-gray-400">ID: {deviceId}</span>
+                                <span className="text-[10px] text-gray-400">ID: {deviceId}</span> <br/>
+                                <span className={`text-[10px] font-bold ${childStatus === 'DANGER' ? 'text-red-500' : 'text-blue-500'}`}>Status: {childStatus}</span>
                             </div>
                         </Popup>
                     </Marker>
