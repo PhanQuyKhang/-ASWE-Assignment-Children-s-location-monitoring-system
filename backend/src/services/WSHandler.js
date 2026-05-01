@@ -11,6 +11,7 @@ module.exports = (io) => {
     LocalMegaphone.on('DEVICE_UPDATES', (event) => {
         try {
             if (event.isOlder) return;
+            console.log("GOO");
             const roomName = `room_device_${event.device_id}`;            
             event.timestamp = DateTime.fromJSDate(event.timestamp).toUTC().toISO();
             io.to(roomName).emit('location_update', event);
@@ -19,27 +20,25 @@ module.exports = (io) => {
             console.error("Failed to process local event:", error);
         }
     });
-    LocalMegaphone.on('DEVICE_OUT_ZONE', (event) => {
+    LocalMegaphone.on('EXIT', (event) => {
         try {
             const roomName = `room_device_${event.device_id}`;
             event.timestamp = DateTime.fromJSDate(event.timestamp).setZone( event.timezone).toLocaleString(DateTime.DATETIME_MED);
             io.to(roomName).emit('alert_device_out_of_zone', event);
-            
         } catch (error) {
             console.error("Failed to process local event:", error);
         }
     });
-    LocalMegaphone.on('DEVICE_ENTER_ZONE', (event) => {
+    LocalMegaphone.on('ENTER', (event) => {
         try {
             const roomName = `room_device_${event.device_id}`;
-            //event.timestamp = DateTime.fromJSDate(event.timestamp).setZone( event.timezone).toLocaleString(DateTime.DATETIME_MED);
+            event.timestamp = DateTime.fromJSDate(event.timestamp).setZone( event.timezone).toLocaleString(DateTime.DATETIME_MED);
             io.to(roomName).emit('alert_device_enter_of_zone', event);
-            
         } catch (error) {
             console.error("Failed to process local event:", error);
         }
     });
-    LocalMegaphone.on('DEVICE_LOST_SIGNAL', async (event) => {
+    LocalMegaphone.on('OUT_OF_SIGNAL', async (event) => {
         try {
             const roomName = `room_device_${event.device_id}`;
             event.updated_at = DateTime.fromJSDate(event.updated_at).setZone( event.timezone).toLocaleString(DateTime.DATETIME_MED);

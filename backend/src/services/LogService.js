@@ -3,6 +3,7 @@ const DeviceModel = require('../models/DeviceModel')
 const LocalMegaphone = require('../services/LocalMegaphone');
 const { validate: validateUUID } = require('uuid');
 const { DateTime } = require('luxon');
+const BoundaryService = require('./BoundaryService');
 const formatLogDates = (log, timezone) => {
     if (!log) return log;
 
@@ -41,48 +42,114 @@ const LogService = {
             if (
                 Number(device.last_lat) === data.latitude &&
                 Number(device.last_lon) === data.longitude &&
-                timeDiff < 5000)
+                timeDiff < 10000)
             {
+                console.log(timeDiff);
                 return; 
             }
         }         
         
         const isOlder = device.last_updated && data.timestamp <= new Date(device.last_updated);
-        if (isOlder) {
-            const createdLogId = await LogModel.create(data);
-            if (!createdLogId) throw new Error("Log creation failed");
-        } else {
-            const [createdLogId, updateResult] = await Promise.all([
-                LogModel.create(data),
-                DeviceModel.updateDevice(data)
-            ]);            
-            if (!createdLogId || !updateResult) {
-                throw new Error("Log create and update failed"); 
-            }
-        }
 
-        //check xem cái mới tạo có timestamp < now + 90s và đang noSIGNAL thì đổi thành ACTIVE
-        const now = Date.now(); // số mili-giây hiện tại
-        const logTime = new Date(data.timestamp).getTime(); // số mili-giây của log
-
-        // Nếu thiết bị NOSIGNAL và log mới không quá 90 giây so với hiện tại
-        if (device.status === "NOSIGNAL" && (now - logTime) <= 90 * 1000) {
-            await DeviceModel.activeDevice(device.device_id);
-            // Có thể tạo alert "SIGNAL_RESTORED" ở đây
-        }
-
-        
+        //Emit event before create log
+        console.log("GOO");
         LocalMegaphone.emit('DEVICE_UPDATES', {
             device_id: data.device_id,
             child_name: device.child_name,
             timezone: device.timezone,
             latitude: data.latitude,
             longitude: data.longitude,
-            battery: data.battery,
+            battery: data.battery_level,
             timestamp: data.timestamp,
             activity_type: data.activity_type,
             isOlder: isOlder
         });
+
+        const zonecheck = await BoundaryService.check(
+            {
+            device_id: data.device_id,
+            child_name: device.child_name,
+            timezone: device.timezone,
+            latitude: data.latitude,
+            longitude: data.longitude,
+            battery: data.battery_level,
+            timestamp: data.timestamp,
+            activity_type: data.activity_type,
+            isOlder: isOlder,
+            device: device
+            }
+        );
+
+        //Create log and update device
+        //Device dc update lat_lon, update_at, device_status, boundary_status
+        const logTime = new Date(data.timestamp).getTime(); // số mili-giây của log
+        if (!isOlder){
+            //check xem cái mới tạo có timestamp < now + 90s và đang noSIGNAL thì đổi thành ACTIVE
+            const now = Date.now(); // số mili-giây hiện tại
+            let device_status;
+            if (device.status === "NOSIGNAL" && (now - logTime) <= 90 * 1000) {
+                device_status = "ACTIVE";
+            }
+            const zone_id = zonecheck?.zone_id ?? null;
+            const zone_name = zonecheck?.zone_name ?? null;
+            const boundary_status = zonecheck?.boundary_status ?? null;
+            const [createdLogId, updateResult] = await Promise.all([
+                LogModel.create(data, zone_id, zone_name, boundary_status),
+                
+                DeviceModel.updateDevice(data, boundary_status ?? null, device_status ?? null)
+            ]);            
+            if (!createdLogId || !updateResult) {
+                throw new Error("Log create and update failed"); 
+            }
+        } else {
+        //Log cũ thì ko update device gì cả!!!
+            const createdLogId = await LogModel.create(data);
+            if (!createdLogId) {
+                throw new Error("Log create failed"); 
+            }
+        }
+            
+        //Alert or not
+        if (zonecheck){
+            const latestLogbyTime = await LogModel.getLatestbyTimeStamp(data.device_id, data.timestamp); 
+            if (latestLogbyTime){
+                const latestlogTime = new Date(latestLogbyTime.timestamp).getTime();
+
+                //Với newLog, latestLogTime chỉ có giá trị nếu ko cách nhau quá 30s
+                if (!isOlder && (logTime - latestlogTime) <= 30 * 1000){
+                    //Nếu cùng zone và cùng type thì ignore
+                    if (latestLogbyTime.zone_id == zonecheck.zone_id && latestLogbyTime.boundary_status == zonecheck.boundary_status)
+                        return;
+                }
+                //Với newLog, nếu cùng zone, cùng type là INSIDE, bất kể tgian thì ignore
+                if (latestLogbyTime.zone_id == zonecheck.zone_id && latestLogbyTime.boundary_status == zonecheck.boundary_status && zonecheck.boundary_status == "INSIDE")
+                    return;
+                //Với oldLog, latestLogTime chỉ có giá trị nếu ko cách nhau quá 30min
+                if (isOlder && (logTime - latestlogTime) <= 30*60 * 1000){
+                    //Nếu cùng zone và cùng type thì ignore
+                    if (latestLogbyTime.zone_id == zonecheck.zone_id && latestLogbyTime.boundary_status == zonecheck.boundary_status)
+                        return;
+                }
+            }
+            
+
+            //Tất cả các trường hợp còn lại thì đều emit sang ALERT
+            LocalMegaphone.emit('DEVICE_ALERT', {
+                device_id: data.device_id,
+                child_name: device.child_name,
+                timezone: device.timezone,
+                zone_id: zonecheck.zone_id,
+                zone_name: zonecheck.zone_name,
+                latitude: data.latitude,
+                longitude: data.longitude,
+                battery: data.battery_level,
+                timestamp: data.timestamp,
+                activity_type: data.activity_type,
+                isOlder: isOlder,
+                boundary_status: zonecheck.boundary_status,
+            });
+        }
+        
 
         return true;
     },

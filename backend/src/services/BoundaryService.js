@@ -332,22 +332,22 @@ const BoundaryService = {
     },
 
     async check(log) {
-        const { device_id, timestamp, latitude, longitude, battery_level, activity_type, isOlder, timezone} = log;
+        const { device_id, timestamp, latitude, longitude, battery_level, activity_type, isOlder, timezone, device} = log;
         // ===== DEVICE =====
-        const device = await DeviceModel.findbyID(device_id);
-        if (!device) throw new Error("Device not found");
-        if (device.status === "INACTIVE") return;
-
         const zones = await BoundaryModel.getZonesbyDevice(device_id);
         if (!zones || zones.length === 0) return;
         
         const location = turf.point([longitude, latitude])
-        let lastValidZone = null;
         for (const zone of zones){
+            if (!zone.is_active) continue;
+            //Check if in scheduled, check for every single ACTIVE zone
+            if (!isNowInSchedule(zone, timestamp, device.timezone)) {
+                continue
+            }
             //Check if in boundary
+            //ONLY one ACTIVE zone can be in scheduled at a time, so if found one, dump other!!!
             let test_1 = false;
             let test_2 = false;
-            if (!zone.is_active) continue;
             if (zone.type == "CIRCLE"){
                 const {center_lat, center_lon} = zone;
                 if (!center_lat || !center_lon){
@@ -368,58 +368,11 @@ const BoundaryService = {
                 }
             }
             if (test_1 || test_2) {
-                lastValidZone=zone;
-                continue; 
+                return {zone_id : zone.zone_id, zone_name : zone.zone_name, boundary_status : "INSIDE"}; 
             }
 
-            //Check if in scheduled
-            if (isNowInSchedule(zone, timestamp, device.timezone)) { 
-                LocalMegaphone.emit('DEVICE_OUT_ZONE', {
-                    device_id: device_id,
-                    user_id: device.user_id,
-                    child_name: device.child_name,
-                    zone_id: zone.zone_id,
-                    zone_name: zone.zone_name,
-                    latitude: latitude,
-                    longitude: longitude,
-                    battery: battery_level,
-                    timestamp: timestamp,
-                    timezone: timezone,
-                    activity_type: activity_type,
-                    isOlder: isOlder,
-                    boundary_status: device.boundary_status,
-                    last_update: device.boundary_status,
-
-                });
-                //chỉ toggle khi ko old
-                if (device.boundary_status === "INSIDE"){
-                    if (!log.isOlder) DeviceModel.changeBoundaryStatusDevice(device_id, "OUTSIDE");
-                }
-            }
-        }
-
-        //Nếu ko vi phạm zone nào cả thì check xem có hasActiveZone true ko và device status là OUT thì emit DEVICE ENTER ZONE
-
-        if (lastValidZone && device.boundary_status == "OUTSIDE" && new Date(log.timestamp) >= new Date(device.last_updated) && !log.isOlder){
-            LocalMegaphone.emit('DEVICE_ENTER_ZONE', {
-                    device_id: device_id,
-                    user_id: device.user_id,
-                    child_name: device.child_name,
-                    zone_id: lastValidZone.zone_id,
-                    zone_name: lastValidZone.zone_name,
-                    latitude: latitude,
-                    longitude: longitude,
-                    battery: battery_level,
-                    timestamp: timestamp,
-                    timezone: timezone,
-                    activity_type: activity_type,
-                    boundary_status: device.boundary_status,
-                    last_update: device.boundary_status,
-            });
-            DeviceModel.changeBoundaryStatusDevice(device_id, "INSIDE");
-        }
-
-        return true;
+            return {zone_id : zone.zone_id, zone_name : zone.zone_name, boundary_status : "OUTSIDE"};         }
+        return null; 
     },
 
     async getZonebyDevice(user_id, device_id) {
@@ -440,13 +393,26 @@ const BoundaryService = {
             result.push(...zones);
         }
         return result;
+    },
+    async deleteZone(user_id, zone_id) {
+        if (!zone_id) {
+            throw new Error("zone_id is required");
+        }
+
+        const zone = await BoundaryModel.getZonebyID(zone_id);
+
+        if (!zone) {
+            throw new Error("Zone not found");
+        }
+
+        const device = await DeviceModel.findbyID(zone.device_id);
+
+        if (!device || device.user_id !== user_id) {
+            throw new Error("Unauthorized: cannot delete this zone");
+        }
+
+        return await BoundaryModel.deleteZonebyID(zone_id);
     }
 };
-LocalMegaphone.on('DEVICE_UPDATES', async (event) => {
-    try {
-        await BoundaryService.check(event);
-    } catch (error) {
-        console.error("Failed to check boundary of log:", error);
-    }
-});
+
 module.exports = BoundaryService;

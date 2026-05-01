@@ -6,7 +6,7 @@ const AlertModel = {
     const rows = await sql`
       INSERT INTO alert_logs (
         device_id, zone_id, alert_type, message,
-        trigger_lat, trigger_lon, is_read, created_at
+        trigger_lat, trigger_lon, is_read, created_at, timestamp
       )
       VALUES (
         ${data.device_id},
@@ -16,7 +16,8 @@ const AlertModel = {
         ${data.latitude ?? null},
         ${data.longitude?? null},
         false, -- mặc định chưa đọc
-        NOW()
+        NOW(),
+        ${data.timestamp?? null}
       )
       RETURNING *;
     `;
@@ -27,7 +28,17 @@ const AlertModel = {
     const rows = await sql`
       SELECT * FROM alert_logs
       WHERE device_id = ${device_id}
-      ORDER BY created_at DESC
+      ORDER BY timestamp DESC
+      LIMIT 1;
+    `;
+    return rows[0];
+  },
+
+  async getLatestByDevicewithTimestamp(device_id, timestamp) {
+    const rows = await sql`
+      SELECT * FROM alert_logs
+      WHERE device_id = ${device_id} and timestamp <= ${timestamp}
+      ORDER BY timestamp DESC
       LIMIT 1;
     `;
     return rows[0];

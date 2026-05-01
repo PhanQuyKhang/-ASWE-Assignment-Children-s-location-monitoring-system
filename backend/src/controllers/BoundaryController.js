@@ -61,8 +61,8 @@ const BoundaryController = {
     deleteZone: async (req, res) => { 
         try {
             const userId = req.user.user_id;
-            const zone_id = req.body;
-            //await BoundaryService.deleteZone(zone_id, userId);
+            const { zone_id } = req.params;
+            await BoundaryService.deleteZone(userId, zone_id);
             return res.json({ success: true });
         } catch (err) {
             console.log(err);

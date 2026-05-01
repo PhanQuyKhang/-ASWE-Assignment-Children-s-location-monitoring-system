@@ -4,8 +4,7 @@ const LocalMegaphone = require('../services/LocalMegaphone');
 
 function startHeartbeatMonitor() {
   // chạy mỗi phút
-  cron.schedule("*/30 * * * * *", async () => {
-    try {
+  cron.schedule("*/2 * * * *", async () => {    try {
       const updatedDevices = await sql`
         UPDATE devices
         SET status = 'NOSIGNAL'
@@ -18,18 +17,19 @@ function startHeartbeatMonitor() {
         console.log(`[Heartbeat Monitor] ${updatedDevices.length} device(s) went offline.`);
 
         // tạo alert OUT_OF_SIGNAL cho từng device
-        for (const device of updatedDevices) {
-          LocalMegaphone.emit('DEVICE_LOST_SIGNAL', {
-              device_id: device.device_id,
-              user_id: device.user_id,
-              child_name: device.child_name,
-              latitude: device.last_lat,
-              longitude: device.last_lon,
-              boundary_status: device.boundary_status,
-              last_update: device.boundary_status,
-              timezone: device.timezone
+        updatedDevices.forEach(device => {
+          LocalMegaphone.emit('OUT_OF_SIGNAL', {
+            device_id: device.device_id,
+            user_id: device.user_id,
+            child_name: device.child_name,
+            latitude: device.last_lat,
+            longitude: device.last_lon,
+            boundary_status: device.boundary_status,
+            updated_at: device.last_updated,
+            timezone: device.timezone,
+            isOld: false
           });
-        }
+        });
       }
 
     } catch (error) {

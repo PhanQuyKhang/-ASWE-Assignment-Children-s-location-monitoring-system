@@ -10,15 +10,28 @@ class Device {
 
         return result || null;
     }
-    static async updateDevice(data) {
-        const {timestamp, latitude, longitude, device_id} = data;
+    static async updateDevice(data, boundary_status, device_status) {
+        const { timestamp, latitude, longitude, device_id } = data;
+
+        const updates = {
+            last_lat: latitude,
+            last_lon: longitude,
+            last_updated: timestamp
+        };
+
+        // Only update if value exists
+        if (boundary_status !== undefined && boundary_status !== null) {
+            updates.boundary_status = boundary_status;
+        }
+
+        if (device_status !== undefined && device_status !== null) {
+            updates.device_status = device_status;
+        }
+
         const [result] = await sql`
             UPDATE devices
-            SET 
-                last_lat = ${latitude}, 
-                last_lon = ${longitude},
-                last_updated = ${timestamp}
-            WHERE device_id = ${device_id} 
+            SET ${sql(updates)}
+            WHERE device_id = ${device_id}
             AND status != 'INACTIVE'
             RETURNING *;
         `;
