@@ -78,7 +78,7 @@ const LogService = {
             timezone: device.timezone,
             latitude: data.latitude,
             longitude: data.longitude,
-            battery: data.battery,
+            battery: data.battery_level,
             timestamp: data.timestamp,
             activity_type: data.activity_type,
             isOlder: isOlder
