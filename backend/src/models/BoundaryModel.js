@@ -149,7 +149,75 @@ class Boundary {
         throw error;
     }
 }
-    
+
+    static async findZoneWithOwnership(zone_id, user_id) {
+        const [row] = await sql`
+            SELECT z.*, d.user_id AS owner_user_id
+            FROM zones z
+            JOIN devices d ON z.device_id = d.device_id
+            WHERE z.zone_id = ${zone_id}
+        `;
+        if (!row || Number(row.owner_user_id) !== Number(user_id)) {
+            return null;
+        }
+        return row;
+    }
+
+    static async deleteZone(zone_id) {
+        await sql`DELETE FROM zones WHERE zone_id = ${zone_id}`;
+    }
+
+    static async updateZoneFull(zone_id, device_id, data) {
+        const {
+            zone_name,
+            type,
+            schedule_type,
+            start_time,
+            duration,
+            days_of_week,
+            days_of_month,
+            specific_date,
+            radius,
+            center_lat,
+            center_lon,
+            points,
+        } = data;
+
+        return sql.begin(async (tx) => {
+            await tx`DELETE FROM circles WHERE zone_id = ${zone_id}`;
+            await tx`DELETE FROM poly_points WHERE zone_id = ${zone_id}`;
+
+            await tx`
+                UPDATE zones SET
+                    zone_name = ${zone_name},
+                    type = ${type},
+                    schedule_type = ${schedule_type},
+                    start_time = ${start_time},
+                    duration = ${duration},
+                    days_of_week = ${days_of_week},
+                    days_of_month = ${days_of_month},
+                    specific_date = ${specific_date}
+                WHERE zone_id = ${zone_id} AND device_id = ${device_id}
+            `;
+
+            if (type === 'CIRCLE') {
+                await tx`
+                    INSERT INTO circles (zone_id, center_lat, center_lon, radius)
+                    VALUES (${zone_id}, ${center_lat}, ${center_lon}, ${radius})
+                `;
+            } else {
+                for (const p of points) {
+                    await tx`
+                        INSERT INTO poly_points (zone_id, sequence_order, latitude, longitude)
+                        VALUES (${zone_id}, ${p.sequence_order}, ${p.latitude}, ${p.longitude})
+                    `;
+                }
+            }
+
+            const [z] = await tx`SELECT * FROM zones WHERE zone_id = ${zone_id}`;
+            return z;
+        });
+    }
 
 }
 

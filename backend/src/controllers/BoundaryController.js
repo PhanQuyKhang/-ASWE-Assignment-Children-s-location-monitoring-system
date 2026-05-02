@@ -46,29 +46,34 @@ const BoundaryController = {
         } 
 
     },
-    updateZone: async (req, res) => { 
+    updateZone: async (req, res) => {
         try {
             const userId = req.user.user_id;
+            const zone_id = parseInt(req.params.zone_id, 10);
+            if (!Number.isFinite(zone_id) || zone_id < 1) {
+                return res.status(400).json({ error: 'Invalid zone_id' });
+            }
             const data = await validateZone(req.body);
-            //await BoundaryService.updateZone(data, userId);
+            await BoundaryService.updateZone(zone_id, userId, data);
             return res.json({ success: true });
         } catch (err) {
             console.log(err);
             return res.status(400).json({ error: err.message });
-        } 
-
+        }
     },
-    deleteZone: async (req, res) => { 
+    deleteZone: async (req, res) => {
         try {
             const userId = req.user.user_id;
-            const zone_id = req.body;
-            //await BoundaryService.deleteZone(zone_id, userId);
+            const zone_id = parseInt(req.params.zone_id, 10);
+            if (!Number.isFinite(zone_id) || zone_id < 1) {
+                return res.status(400).json({ error: 'Invalid zone_id' });
+            }
+            await BoundaryService.deleteZone(zone_id, userId);
             return res.json({ success: true });
         } catch (err) {
             console.log(err);
             return res.status(400).json({ error: err.message });
-        } 
-
+        }
     },
     
 };

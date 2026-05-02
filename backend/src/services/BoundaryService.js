@@ -331,6 +331,54 @@ const BoundaryService = {
         return await BoundaryModel.create(data, device_id);
     },
 
+    async updateZone(zone_id, user_id, data) {
+        const zoneRow = await BoundaryModel.findZoneWithOwnership(zone_id, user_id);
+        if (!zoneRow) throw new Error('Zone not found or unauthorized');
+
+        const device_id = zoneRow.device_id;
+        const { type, radius, points, specific_date } = data;
+
+        const device = await DeviceModel.findbyID(device_id);
+        if (!device) throw new Error('Device not found');
+        if (device.status === 'INACTIVE') throw new Error('Device inactive');
+
+        if (specific_date) {
+            const now = DateTime.now().setZone(device.timezone).startOf('day');
+            const dt = DateTime.fromISO(specific_date, { zone: device.timezone }).startOf('day');
+
+            if (!dt.isValid) {
+                throw new Error('Invalid specific_date');
+            }
+
+            if (dt < now) {
+                throw new Error('Date cannot be in the past');
+            }
+        }
+
+        const allZones = await BoundaryModel.getZonesbyDevice(device_id);
+        const otherZones = allZones.filter((z) => Number(z.zone_id) !== Number(zone_id));
+        if (otherZones.length > 0 && hasScheduleOverlap(data, otherZones, device.timezone)) {
+            throw new Error('Schedule overlap detected');
+        }
+
+        if (type === 'CIRCLE') {
+            if (radius < 3) {
+                throw new Error('Radius must be >= 3 meters');
+            }
+        } else {
+            validatePolygon(points);
+        }
+
+        return BoundaryModel.updateZoneFull(zone_id, device_id, data);
+    },
+
+    async deleteZone(zone_id, user_id) {
+        const zoneRow = await BoundaryModel.findZoneWithOwnership(zone_id, user_id);
+        if (!zoneRow) throw new Error('Zone not found or unauthorized');
+        await BoundaryModel.deleteZone(zone_id);
+        return true;
+    },
+
     async check(log) {
         const { device_id, timestamp, latitude, longitude, battery_level, activity_type, isOlder, timezone} = log;
         // ===== DEVICE =====

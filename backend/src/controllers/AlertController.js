@@ -1,4 +1,5 @@
 const AlertService = require('../services/AlertService');
+const AlertModel = require('../models/AlertModel');
 
 const AlertController = {
     getLatestAlertbyDevice: async (req, res) => { 
@@ -78,6 +79,25 @@ const AlertController = {
             console.error("Error fetching alerts:", err);
             return res.status(500).json({ error: err.message }); 
         } 
+    },
+
+    markAlertRead: async (req, res) => {
+        try {
+            const userId = req.user.user_id;
+            const alertId = parseInt(req.params.alert_id, 10);
+            if (!Number.isFinite(alertId) || alertId < 1) {
+                return res.status(400).json({ error: 'Invalid alert_id' });
+            }
+            const row = await AlertModel.findAlertForUser(alertId, userId);
+            if (!row) {
+                return res.status(404).json({ error: 'Alert not found' });
+            }
+            const updated = await AlertModel.markAsRead(alertId);
+            return res.status(200).json({ success: true, data: updated });
+        } catch (err) {
+            console.error('Error marking alert read:', err);
+            return res.status(500).json({ error: err.message });
+        }
     },
 };
 

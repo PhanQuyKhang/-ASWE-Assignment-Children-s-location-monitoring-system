@@ -25,3 +25,27 @@ export const getBoundaries = async (deviceId) => {
   const response = await api.get(`/device/boundary/${deviceId}`);
   return response.data;
 };
+
+export const deleteBoundary = async (zoneId) => {
+  const response = await api.delete(`/device/boundary/zone/${zoneId}`);
+  return response.data;
+};
+
+export const updateBoundary = async (zoneId, boundaryData) => {
+  const payload = {
+    zone_name: boundaryData.zone_name,
+    type: boundaryData.type,
+    schedule_type: boundaryData.schedule_type,
+    start_time: boundaryData.start_time,
+    duration: boundaryData.duration,
+    days_of_week: boundaryData.days_of_week,
+    days_of_month: boundaryData.days_of_month,
+    specific_date: boundaryData.specific_date,
+    radius: boundaryData.radius,
+    center_lat: boundaryData.center_lat,
+    center_lon: boundaryData.center_lon,
+    points: boundaryData.points,
+  };
+  const response = await api.put(`/device/boundary/zone/${zoneId}`, payload);
+  return response.data;
+};

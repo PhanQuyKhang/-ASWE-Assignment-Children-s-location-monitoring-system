@@ -17,7 +17,7 @@ export default function useDevices(userId) {
 
       try {
         setLoading(true);
-        const response = await getMyDevices(userId); 
+        const response = await getMyDevices();
         const deviceList = response.data;        
         setDevices(deviceList);
         
@@ -37,7 +37,21 @@ export default function useDevices(userId) {
     }
 
     fetchData();
-  }, [userId]); // Chỉ chạy lại khi userId thay đổi
+  }, [userId]);
+
+  useEffect(() => {
+    function onRefresh() {
+      if (!userId) return;
+      getMyDevices()
+        .then((response) => {
+          const deviceList = response.data ?? [];
+          setDevices(deviceList);
+        })
+        .catch(() => setDevices([]));
+    }
+    window.addEventListener('clms-devices-changed', onRefresh);
+    return () => window.removeEventListener('clms-devices-changed', onRefresh);
+  }, [userId]);
 
   return { devices, selectedDevice, setSelectedDevice, loading };
 }

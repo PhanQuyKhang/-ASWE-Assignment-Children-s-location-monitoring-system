@@ -1,11 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { getAlertHistory } from '../services/alertService';
 
 export default function useAlerts(deviceId) {
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  const fetchHistory = async () => {
+  const fetchHistory = useCallback(async () => {
     if (!deviceId) return;
     try {
       setLoading(true);
@@ -18,11 +18,11 @@ export default function useAlerts(deviceId) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [deviceId]);
 
   useEffect(() => {
     fetchHistory();
-  }, [deviceId]);
+  }, [fetchHistory]);
 
   return { alerts, loading, refreshAlerts: fetchHistory };
 }

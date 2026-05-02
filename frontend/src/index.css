@@ -1064,3 +1064,139 @@ body {
     min-height: 30rem;
   }
 }
+
+/* Sidebar layout (dashboard) */
+.dashboard-with-sidebar {
+  display: flex;
+  flex-direction: column;
+  min-height: 100svh;
+}
+
+.dashboard-with-sidebar-inner {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.clms-sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  background: #fff;
+  border-right: 1px solid var(--border, #e5e7eb);
+  padding: 1rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.clms-sidebar-brand {
+  font-weight: 800;
+  font-size: 0.85rem;
+  letter-spacing: 0.06em;
+  color: var(--brand-700, #009947);
+  padding: 0.25rem 0.5rem 0.75rem;
+}
+
+.clms-sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.clms-sidebar-link {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 0.65rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--ink-600, #374151);
+  text-decoration: none;
+  transition: background 0.15s, color 0.15s;
+}
+
+.clms-sidebar-link:hover {
+  background: #f0fbf4;
+  color: var(--brand-700, #009947);
+}
+
+.clms-sidebar-link.active {
+  background: linear-gradient(135deg, #dffae9, #baf0ce);
+  color: var(--brand-800, #007a3d);
+}
+
+.clms-sidebar-badge {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #ef4444;
+  margin-left: auto;
+}
+
+.clms-dashboard-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg, #f7fbf8);
+}
+
+.clms-reconnect-banner {
+  background: #fef3c7;
+  color: #92400e;
+  padding: 0.5rem 1rem;
+  text-align: center;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.clms-sticky-alert {
+  background: #fef2f2;
+  border-bottom: 1px solid #fecaca;
+  color: #991b1b;
+  padding: 0.65rem 1rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.clms-sticky-alert button {
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  color: #991b1b;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+@media (max-width: 720px) {
+  .dashboard-with-sidebar-inner {
+    flex-direction: column;
+  }
+
+  .clms-sidebar {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid var(--border, #e5e7eb);
+    flex-direction: row;
+    flex-wrap: wrap;
+    padding: 0.5rem;
+  }
+
+  .clms-sidebar-nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .clms-sidebar-link {
+    flex: 1 1 auto;
+    justify-content: center;
+    min-width: 44%;
+  }
+}

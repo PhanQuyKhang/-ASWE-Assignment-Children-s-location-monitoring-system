@@ -23,3 +23,13 @@ export const getAllUserAlerts = async () => {
   const response = await api.get('/alert/');
   return response.data;
 };
+
+export const getAllUserAlertsPaged = async (params = {}) => {
+  const response = await api.get('/alert/', { params });
+  return response.data;
+};
+
+export const markAlertRead = async (alertId) => {
+  const response = await api.put(`/alert/${alertId}/read`);
+  return response.data;
+};

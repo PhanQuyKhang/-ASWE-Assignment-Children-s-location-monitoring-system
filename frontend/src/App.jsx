@@ -1,10 +1,14 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import ProtectedRoute from './components/ProtectedRoute';
-import DashboardPage from './pages/DashboardPage';
+import DashboardLayout from './layouts/DashboardLayout';
+import DashboardProfilePage from './pages/DashboardProfilePage';
+import MapViewPage from './pages/MapViewPage';
+import BoundaryPage from './pages/BoundaryPage';
+import DevicesPage from './pages/DevicesPage';
+import AlertsPage from './pages/AlertsPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import LoginPage from './pages/LoginPage';
 import OAuthCallbackPage from './pages/OAuthCallbackPage';
-import ProfilePage from './pages/ProfilePage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import SignupPage from './pages/SignupPage';
 
@@ -21,18 +25,19 @@ function App() {
         path="/dashboard"
         element={
           <ProtectedRoute>
-            <DashboardPage />
+            <DashboardLayout />
           </ProtectedRoute>
         }
-      />
-      <Route
-        path="/profile"
-        element={
-          <ProtectedRoute>
-            <ProfilePage />
-          </ProtectedRoute>
-        }
-      />
+      >
+        <Route index element={<Navigate to="profile" replace />} />
+        <Route path="profile" element={<DashboardProfilePage />} />
+        <Route path="map" element={<MapViewPage />} />
+        <Route path="boundary" element={<BoundaryPage />} />
+        <Route path="devices" element={<DevicesPage />} />
+        <Route path="alerts" element={<AlertsPage />} />
+      </Route>
+
+      <Route path="/profile" element={<Navigate to="/dashboard/profile" replace />} />
 
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<Navigate to="/" replace />} />

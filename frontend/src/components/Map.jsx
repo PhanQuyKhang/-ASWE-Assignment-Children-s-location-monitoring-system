@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents, Polygon, Circle } from 'react-leaflet';
-import { io } from 'socket.io-client';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { getBoundaries } from '../services/boundaryService';
+import { getBoundaries, deleteBoundary } from '../services/boundaryService';
 import { getLatestAlert } from '../services/alertService';
+import { useSocket } from '../hooks/useSocket';
 
 // Fix Leaflet icons
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
@@ -85,9 +85,9 @@ function RecenterButton({ position }) {
     );
 }
 
-export default function Map({ deviceId, childName, mode, onSave, initialPosition }) {
+export default function Map({ deviceId, childName, mode, onSave, initialPosition, deviceStatus }) {
+    const { socket, connected } = useSocket();
     const [position, setPosition] = useState(initialPosition || [10.7626, 106.6602]);
-    const [isOnline, setIsOnline] = useState(false);
     
     const [drawType, setDrawType] = useState('POLYGON');
     const [zoneName, setZoneName] = useState('');
@@ -107,6 +107,22 @@ export default function Map({ deviceId, childName, mode, onSave, initialPosition
 
     const daysOfWeek = [{ label: 'S', value: 0 }, { label: 'M', value: 1 }, { label: 'T', value: 2 }, { label: 'W', value: 3 }, { label: 'T', value: 4 }, { label: 'F', value: 5 }, { label: 'S', value: 6 }];
 
+    const toggleDay = (v) => {
+        setSelectedDays((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]));
+    };
+    const toggleMonthDay = (v) => {
+        setSelectedMonthDays((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]));
+    };
+
+    const deviceOffline = deviceStatus === 'NOSIGNAL' || deviceStatus === 'INACTIVE';
+    const showLive = connected && !deviceOffline;
+
+    const connectionLabel = () => {
+        if (!connected) return 'SOCKET OFFLINE';
+        if (deviceOffline) return 'DEVICE OFFLINE';
+        return 'LIVE';
+    };
+
     const getScheduleInfo = (zone) => {
         if (zone.schedule_type === 'ALWAYS') return "Always active";
         const timePart = zone.start_time ? ` at ${zone.start_time.slice(0, 5)}` : "";
@@ -117,22 +133,26 @@ export default function Map({ deviceId, childName, mode, onSave, initialPosition
             case 'DAILY': return `Daily${combinedTime}`;
             case 'WEEKLY': return `Weekly on ${zone.days_of_week?.join(', ')}${combinedTime}`;
             case 'MONTHLY': return `Monthly on days ${zone.days_of_month?.join(', ')}${combinedTime}`;
-            case 'ONCE': 
-                const date = zone.specific_date ? new Date(zone.specific_date).toLocaleDateString() : "";
+            case 'ONCE': {
+                const date = zone.specific_date ? new Date(zone.specific_date).toLocaleDateString() : '';
                 return `Once on ${date}${combinedTime}`;
+            }
             default: return zone.schedule_type;
         }
     };
 
-    // Helper to get marker color based on status
+    const effectiveMarkerStatus =
+        deviceOffline ? 'OFFLINE' : childStatus;
+
     const getStatusColor = () => {
-        if (childStatus === 'DANGER') return '#ef4444'; // Red
-        if (childStatus === 'OFFLINE') return '#9ca3af'; // Gray
-        return '#3b82f6'; // Blue (Safe)
+        if (effectiveMarkerStatus === 'DANGER') return '#ef4444';
+        if (effectiveMarkerStatus === 'OFFLINE') return '#9ca3af';
+        return '#3b82f6';
     };
 
     useEffect(() => {
         if (initialPosition) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect -- sync marker when parent passes last known location
             setPosition(initialPosition);
         }
     }, [initialPosition]);
@@ -158,52 +178,67 @@ export default function Map({ deviceId, childName, mode, onSave, initialPosition
                     else if (res.data.alert_type === 'ENTER') setChildStatus('SAFE');
                     else if (res.data.alert_type === 'OUT_OF_SIGNAL') setChildStatus('OFFLINE');
                 }
-            } catch (err) { console.log("No status history found."); }
+            } catch {
+                console.log('No status history found.');
+            }
         };
         fetchStatus();
+    }, [deviceId, childName]);
 
-        const socket = io('http://localhost:3000', { withCredentials: true, transports: ['polling', 'websocket'] });
-        socket.on('connect', () => setIsOnline(true));
-        
-        socket.on('location_update', (data) => {
-            console.log("📍 Location update received:", data);
+    useEffect(() => {
+        if (!deviceId || !socket) return undefined;
+
+        const onLocation = (data) => {
             if (data.device_id === deviceId && data.latitude && data.longitude) {
                 setPosition([data.latitude, data.longitude]);
             }
-        });
+        };
 
-        socket.on('alert_device_enter_of_zone', (data) => {
+        const onEnter = (data) => {
             if (data.device_id === deviceId) {
                 setChildStatus('SAFE');
                 if (activeOutToastIdRef.current) {
                     toast.dismiss(activeOutToastIdRef.current);
                     activeOutToastIdRef.current = null;
                 }
-                toast.success(`${childName} is safe`, { description: `${childName} entered ${data.zone_name || 'safe zone'}` });
+                toast.success(`${childName} is safe`, {
+                    description: `${childName} entered ${data.zone_name || 'safe zone'}`,
+                });
             }
-        });
+        };
 
-        socket.on('alert_device_out_of_zone', (data) => {
+        const onOut = (data) => {
             if (data.device_id === deviceId) {
                 setChildStatus('DANGER');
-                const id = toast.error(`🚨 EMERGENCY!`, { 
-                    description: `${childName} left ${data.zone_name || 'safe zone'}!`, 
-                    duration: Infinity 
+                const id = toast.error('Alert: left safe zone', {
+                    description: `${childName} left ${data.zone_name || 'safe zone'}!`,
+                    duration: Infinity,
                 });
                 activeOutToastIdRef.current = id;
             }
-        });
+        };
 
-        socket.on('alert_device_out_of_signal', (data) => {
+        const onSignal = (data) => {
             if (data.device_id === deviceId) {
                 setChildStatus('OFFLINE');
-                toast.warning(`Signal Lost`, { description: `Lost connection to ${childName}'s device.`});
+                toast.warning('Signal lost', {
+                    description: `Lost connection to ${childName}'s device.`,
+                });
             }
-        });
+        };
 
-        socket.on('connect_error', () => setIsOnline(false));
-        return () => socket.disconnect();
-    }, [deviceId, childName]);
+        socket.on('location_update', onLocation);
+        socket.on('alert_device_enter_of_zone', onEnter);
+        socket.on('alert_device_out_of_zone', onOut);
+        socket.on('alert_device_out_of_signal', onSignal);
+
+        return () => {
+            socket.off('location_update', onLocation);
+            socket.off('alert_device_enter_of_zone', onEnter);
+            socket.off('alert_device_out_of_zone', onOut);
+            socket.off('alert_device_out_of_signal', onSignal);
+        };
+    }, [deviceId, childName, socket]);
 
     const handleInternalSave = () => {
         if (!zoneName) return toast.warning("Missing Name", { description: "Please enter a Zone Name" });
@@ -227,6 +262,18 @@ export default function Map({ deviceId, childName, mode, onSave, initialPosition
         if (drawType === 'CIRCLE' && !circleCenter) return toast.error("Invalid Circle", { description: "Click on map to set center" });
 
         onSave(boundaryData);
+    };
+
+    const handleDeleteZone = async (zoneId) => {
+        if (!window.confirm('Delete this safe zone?')) return;
+        try {
+            await deleteBoundary(zoneId);
+            const res = await getBoundaries(deviceId);
+            if (res.success) setExistingZones(res.data);
+            toast.success('Zone removed');
+        } catch (e) {
+            toast.error(e.response?.data?.error || e.message);
+        }
     };
 
     return (
@@ -290,13 +337,33 @@ export default function Map({ deviceId, childName, mode, onSave, initialPosition
                         <button onClick={handleInternalSave} className="w-full bg-blue-600 text-white py-2 rounded-lg font-bold text-sm shadow hover:bg-blue-700">Save Boundary</button>
                         <button onClick={() => { setPolygonPoints([]); setCircleCenter(null); }} className="text-xs text-gray-400 hover:text-gray-600 underline">Clear Drawing</button>
                     </div>
+
+                    {existingZones.length > 0 ? (
+                        <div className="mt-4 border-t border-gray-200 pt-3">
+                            <h4 className="text-[10px] font-bold text-gray-500 uppercase mb-2">Existing zones</h4>
+                            <ul className="flex flex-col gap-1 max-h-40 overflow-y-auto">
+                                {existingZones.map((z) => (
+                                    <li key={z.zone_id} className="flex justify-between items-center text-xs gap-2 bg-white p-2 rounded border">
+                                        <span className="truncate font-medium">{z.zone_name}</span>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleDeleteZone(z.zone_id)}
+                                            className="text-red-600 font-bold shrink-0"
+                                        >
+                                            Delete
+                                        </button>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    ) : null}
                 </div>
             )}
 
             <div className="flex-1 relative min-h-100 lg:h-125 rounded-xl overflow-hidden border shadow-lg">
                 <div className="absolute top-2 right-2 z-1000 bg-white/90 px-3 py-1 rounded-full text-[10px] font-bold shadow-sm flex items-center gap-2">
-                    <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></span>
-                    {isOnline ? 'CONNECTED' : 'OFFLINE'}
+                    <span className={`w-2 h-2 rounded-full ${showLive ? 'bg-green-500 animate-pulse' : 'bg-amber-500'}`} />
+                    {connectionLabel()}
                 </div>
 
                 <MapContainer center={position} zoom={16} style={{ height: '100%', width: '100%' }}>
@@ -338,7 +405,7 @@ export default function Map({ deviceId, childName, mode, onSave, initialPosition
                     ))}
 
                     <Marker 
-                        key={`${deviceId}-${childStatus}`} 
+                        key={`${deviceId}-${effectiveMarkerStatus}`} 
                         position={position}
                         icon={L.divIcon({
                             className: 'custom-marker',
@@ -351,7 +418,7 @@ export default function Map({ deviceId, childName, mode, onSave, initialPosition
                             <div className="text-sm">
                                 <b>Child:</b> {childName || "Unknown"} <br/>
                                 <span className="text-[10px] text-gray-400">ID: {deviceId}</span> <br/>
-                                <span className={`text-[10px] font-bold ${childStatus === 'DANGER' ? 'text-red-500' : 'text-blue-500'}`}>Status: {childStatus}</span>
+                                <span className={`text-[10px] font-bold ${effectiveMarkerStatus === 'DANGER' ? 'text-red-500' : 'text-blue-500'}`}>Status: {effectiveMarkerStatus}</span>
                             </div>
                         </Popup>
                     </Marker>

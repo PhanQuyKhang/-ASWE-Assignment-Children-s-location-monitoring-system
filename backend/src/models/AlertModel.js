@@ -58,7 +58,8 @@ const AlertModel = {
     let rows;
     if (cursor) {
       rows = await sql`
-        SELECT a.* FROM alert_logs a
+        SELECT a.*, d.child_name, d.timezone AS device_timezone
+        FROM alert_logs a
         JOIN devices d ON a.device_id = d.device_id
         WHERE d.user_id = ${user_id}
           AND a.created_at < ${cursor}
@@ -67,7 +68,8 @@ const AlertModel = {
       `;
     } else {
       rows = await sql`
-        SELECT a.* FROM alert_logs a
+        SELECT a.*, d.child_name, d.timezone AS device_timezone
+        FROM alert_logs a
         JOIN devices d ON a.device_id = d.device_id
         WHERE d.user_id = ${user_id}
         ORDER BY a.created_at DESC
@@ -75,6 +77,15 @@ const AlertModel = {
       `;
     }
     return rows;
+  },
+
+  async findAlertForUser(alert_id, user_id) {
+    const [row] = await sql`
+      SELECT a.* FROM alert_logs a
+      JOIN devices d ON a.device_id = d.device_id
+      WHERE a.alert_id = ${alert_id} AND d.user_id = ${user_id}
+    `;
+    return row || null;
   },
 
   async markAsRead(alert_id) {

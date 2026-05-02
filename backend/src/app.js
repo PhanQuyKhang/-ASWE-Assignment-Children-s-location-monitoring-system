@@ -13,6 +13,7 @@ const { Server } = require('socket.io');
 const { sql, testConnection } = require('./database/connection'); 
 const WSHandler = require('./services/WSHandler');
 const startHeartbeatMonitor = require('./Cron/DeviceHeartbeat.js');
+require('./services/OneSignalPushBridge');
 
 const app = express();
 app.use((req, res, next) => {
@@ -53,9 +54,16 @@ app.use('/alert', AlertRoute);
 const PORT = process.env.PORT || 3000;
 const server = http.createServer(app);
 
+const socketCorsOrigins = [
+    process.env.FRONTEND_URL,
+    'http://localhost:5173',
+    'http://localhost:5174',
+    'http://localhost:5175',
+].filter(Boolean);
+
 const io = new Server(server, {
     cors: {
-        origin: ["http://localhost:5173"], 
+        origin: socketCorsOrigins.length ? socketCorsOrigins : true,
         credentials: true
     }
 });

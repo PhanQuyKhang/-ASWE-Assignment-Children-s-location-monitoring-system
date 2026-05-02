@@ -170,8 +170,8 @@ const AlertService = {
                 ? alerts[alerts.length - 1].created_at.toISOString()
                 : null;
 
-        const formattedAlerts = alerts.map(alerts =>
-            formatAlertDates(alerts, alerts.timezone)
+        const formattedAlerts = alerts.map((row) =>
+            formatAlertDates(row, row.device_timezone || row.timezone)
         );
 
         

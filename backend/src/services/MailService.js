@@ -50,13 +50,34 @@ async function sendAlertEmail({ to, fname, event }) {
     throw new Error('Mail service is not configured');
   }
 
-  const { device_id, child_name, timestamp, lat, lon, battery_level, activity_type, timezone } = event;
+  const {
+    device_id,
+    child_name,
+    timestamp,
+    lat,
+    lon,
+    latitude,
+    longitude,
+    battery_level,
+    battery,
+    activity_type,
+    timezone,
+  } = event;
+
+  const latN = lat ?? latitude;
+  const lonN = lon ?? longitude;
+  const batteryPct =
+    battery_level != null
+      ? battery_level
+      : battery != null && typeof battery === 'object' && battery.level != null
+        ? Number(battery.level) * 100
+        : null;
 
   const formattedTime = DateTime.fromJSDate(timestamp)
     .setZone(timezone)
-    .toLocaleString(DateTime.DATETIME_MED); 
+    .toLocaleString(DateTime.DATETIME_MED);
 
-  const mapsLink = `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
+  const mapsLink = `https://www.google.com/maps/search/?api=1&query=${latN},${lonN}`;
 
   // 4. Send the email
   await transport.sendMail({
@@ -73,7 +94,7 @@ async function sendAlertEmail({ to, fname, event }) {
             <p style="margin: 0 0 10px 0;"><strong>Current Status:</strong></p>
             <ul style="margin: 0; padding-left: 20px; color: #555;">
                 <li><strong>Activity:</strong> ${activity_type || 'Unknown'}</li>
-                <li><strong>Battery:</strong> ${battery_level !== null ? battery_level + '%' : 'Unknown'}</li>
+                <li><strong>Battery:</strong> ${batteryPct !== null && !Number.isNaN(batteryPct) ? Math.round(batteryPct) + '%' : 'Unknown'}</li>
             </ul>
             <p style="margin: 15px 0 0 0;">
                 <a href="${mapsLink}" target="_blank" style="display: inline-block; padding: 10px 15px; background-color: #d9534f; color: #fff; text-decoration: none; border-radius: 5px; font-weight: bold;">
