@@ -28,6 +28,9 @@ export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState('profile');
   const [configTarget, setConfigTarget] = useState(null);
   const [viewTarget, setViewTarget] = useState(null);
+  /** Bump when (re)opening the map so Leaflet remounts with fresh API coords, not stale React state. */
+  const [mapViewSession, setMapViewSession] = useState(0);
+  const [mapEditSession, setMapEditSession] = useState(0);
   const [profileForm, setProfileForm] = useState({ fname: '', lname: '', phone: '' });
   const [passwordForm, setPasswordForm] = useState({
     newPassword: '',
@@ -167,6 +170,30 @@ export default function DashboardPage() {
   }
 
   const activeMeta = tabMeta[activeTab];
+
+  async function selectMapChild(device) {
+    try {
+      const list = await refetchDevices();
+      const fresh = Array.isArray(list) ? list.find((d) => d.device_id === device.device_id) : null;
+      setViewTarget(fresh ?? device);
+      setMapViewSession((n) => n + 1);
+    } catch {
+      setViewTarget(device);
+      setMapViewSession((n) => n + 1);
+    }
+  }
+
+  async function selectBoundaryChild(device) {
+    try {
+      const list = await refetchDevices();
+      const fresh = Array.isArray(list) ? list.find((d) => d.device_id === device.device_id) : null;
+      setConfigTarget(fresh ?? device);
+      setMapEditSession((n) => n + 1);
+    } catch {
+      setConfigTarget(device);
+      setMapEditSession((n) => n + 1);
+    }
+  }
 
   return (
     <main className="dashboard-page">
@@ -370,7 +397,7 @@ export default function DashboardPage() {
                           key={device.device_id}
                           type="button"
                           className="picker-card picker-card--map"
-                          onClick={() => setViewTarget(device)}
+                          onClick={() => selectMapChild(device)}
                         >
                           <span className="picker-card__avatar">{device.child_name?.[0]?.toUpperCase()}</span>
                           <div>
@@ -391,11 +418,15 @@ export default function DashboardPage() {
                     </button>
                   </div>
                   <Map
+                    key={`map-view-${viewTarget.device_id}-${mapViewSession}`}
                     mode="view"
                     deviceId={viewTarget.device_id}
                     childName={viewTarget.child_name}
                     initialPosition={
-                      viewTarget.last_lat && viewTarget.last_lon
+                      viewTarget.last_lat != null &&
+                      viewTarget.last_lon != null &&
+                      viewTarget.last_lat !== '' &&
+                      viewTarget.last_lon !== ''
                         ? [parseFloat(viewTarget.last_lat), parseFloat(viewTarget.last_lon)]
                         : null
                     }
@@ -470,7 +501,7 @@ export default function DashboardPage() {
                           key={device.device_id}
                           type="button"
                           className="picker-card picker-card--boundary"
-                          onClick={() => setConfigTarget(device)}
+                          onClick={() => selectBoundaryChild(device)}
                         >
                           <span className="picker-card__avatar">{device.child_name?.[0]?.toUpperCase()}</span>
                           <div>
@@ -491,11 +522,15 @@ export default function DashboardPage() {
                     </button>
                   </div>
                   <Map
+                    key={`map-edit-${configTarget.device_id}-${mapEditSession}`}
                     mode="edit"
                     deviceId={configTarget.device_id}
                     childName={configTarget.child_name}
                     initialPosition={
-                      configTarget.last_lat && configTarget.last_lon
+                      configTarget.last_lat != null &&
+                      configTarget.last_lon != null &&
+                      configTarget.last_lat !== '' &&
+                      configTarget.last_lon !== ''
                         ? [parseFloat(configTarget.last_lat), parseFloat(configTarget.last_lon)]
                         : null
                     }
