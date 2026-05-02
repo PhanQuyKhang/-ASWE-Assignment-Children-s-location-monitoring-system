@@ -4,14 +4,22 @@ const { validateLogPayload } = require("../dto/logDTO");
 const LogController = {
     saveLog: async (req, res) => { 
         try {
+            if (process.env.LOG_TRACCAR_PAYLOAD === '1' || process.env.LOG_TRACCAR_PAYLOAD === 'true') {
+                console.log('[Traccar /log/traccar] raw body:', JSON.stringify(req.body, null, 2));
+            }
+
             const data = await validateLogPayload(req.body);
             
-            LogService.processLog(data); 
-            
-            return res.status(201).json({ success: true }); 
+            await LogService.processLog(data);
+
+            return res.status(201).json({ success: true });
         } catch (err) {
             console.error("Error saving log:", err);
-            return res.status(400).json({ error: err.message });
+            const isValidation =
+                err?.name === 'ValidationError' ||
+                /invalid|required|must be/i.test(String(err.message || ''));
+            const status = isValidation ? 400 : 500;
+            return res.status(status).json({ error: err.message });
         } 
     },
 

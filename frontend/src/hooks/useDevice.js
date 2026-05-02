@@ -1,5 +1,4 @@
-// frontend/src/hooks/useDevice.js
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { getMyDevices } from '../services/deviceService';
 
 export default function useDevices(userId) {
@@ -7,37 +6,35 @@ export default function useDevices(userId) {
   const [selectedDevice, setSelectedDevice] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    async function fetchData() {
-      // Nếu chưa có userId (chưa login xong), không gọi API
-      if (!userId) {
-        setLoading(false);
-        return;
-      }
-
-      try {
-        setLoading(true);
-        const response = await getMyDevices(userId); 
-        const deviceList = response.data;        
-        setDevices(deviceList);
-        
-        // Tự động chọn thiết bị đầu tiên nếu mảng có dữ liệu
-        if (deviceList.length > 0) {
-          setSelectedDevice(deviceList[0]);
-        } else {
-          setSelectedDevice(null);
-        }
-      } catch (err) {
-        console.error("Fetch devices error:", err);
-        setDevices([]);
-        setSelectedDevice(null);
-      } finally {
-        setLoading(false);
-      }
+  const refetch = useCallback(async () => {
+    if (!userId) {
+      setDevices([]);
+      setSelectedDevice(null);
+      setLoading(false);
+      return;
     }
 
-    fetchData();
-  }, [userId]); // Chỉ chạy lại khi userId thay đổi
+    try {
+      setLoading(true);
+      const deviceList = await getMyDevices();
+      setDevices(deviceList);
+      setSelectedDevice((prev) => {
+        if (!prev) return deviceList[0] ?? null;
+        const still = deviceList.find((d) => d.device_id === prev.device_id);
+        return still ?? deviceList[0] ?? null;
+      });
+    } catch (err) {
+      console.error('Fetch devices error:', err);
+      setDevices([]);
+      setSelectedDevice(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [userId]);
 
-  return { devices, selectedDevice, setSelectedDevice, loading };
+  useEffect(() => {
+    refetch();
+  }, [refetch]);
+
+  return { devices, selectedDevice, setSelectedDevice, loading, refetch };
 }

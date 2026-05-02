@@ -1,13 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
 import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents, Polygon, Circle } from 'react-leaflet';
 import { io } from 'socket.io-client';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { getBoundaries } from '../services/boundaryService';
+import { getBoundaries, createBoundary, updateBoundary, deleteBoundary } from '../services/boundaryService';
 import { getLatestAlert } from '../services/alertService';
 
-// Fix Leaflet icons
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
 import markerShadow from 'leaflet/dist/images/marker-shadow.png';
@@ -16,13 +15,30 @@ L.Icon.Default.mergeOptions({ iconRetinaUrl: markerIcon2x, iconUrl: markerIcon, 
 
 function MapResizer() {
     const map = useMap();
-    useEffect(() => { setTimeout(() => { map.invalidateSize(); }, 200); }, [map]);
+    useEffect(() => {
+        setTimeout(() => {
+            map.invalidateSize();
+        }, 200);
+    }, [map]);
     return null;
 }
 
 function ChangeView({ center }) {
     const map = useMap();
-    useEffect(() => { if (center) { map.flyTo(center, map.getZoom(), { animate: true }); } }, [center, map]);
+    useEffect(() => {
+        if (center) {
+            map.flyTo(center, map.getZoom(), { animate: true });
+        }
+    }, [center, map]);
+    return null;
+}
+
+function FlyToTarget({ target, nonce }) {
+    const map = useMap();
+    useEffect(() => {
+        if (!target || nonce == null) return;
+        map.flyTo(target, Math.max(map.getZoom(), 15), { animate: true, duration: 0.85 });
+    }, [target, nonce, map]);
     return null;
 }
 
@@ -31,7 +47,7 @@ function MapClickHandler({ mode, drawType, setPoints, setCircleCenter }) {
         click: (e) => {
             if (mode === 'edit') {
                 if (drawType === 'POLYGON') {
-                    setPoints(prev => [...prev, [e.latlng.lat, e.latlng.lng]]);
+                    setPoints((prev) => [...prev, [e.latlng.lat, e.latlng.lng]]);
                 } else if (drawType === 'CIRCLE') {
                     setCircleCenter([e.latlng.lat, e.latlng.lng]);
                 }
@@ -43,12 +59,12 @@ function MapClickHandler({ mode, drawType, setPoints, setCircleCenter }) {
 
 function RecenterButton({ position }) {
     const map = useMap();
-    
+
     const handleRecenter = () => {
         if (position) {
             map.flyTo(position, map.getZoom(), {
                 animate: true,
-                duration: 1
+                duration: 1,
             });
         }
     };
@@ -56,25 +72,17 @@ function RecenterButton({ position }) {
     return (
         <div className="leaflet-bottom leaflet-right" style={{ marginBottom: '30px', marginRight: '10px' }}>
             <div className="leaflet-control" style={{ border: 'none', background: 'none' }}>
-                <button
-                    onClick={handleRecenter}
-                    title="Recenter to child"
-                    className="bg-white hover:bg-gray-50 text-blue-600 p-0 rounded-full shadow-xl border border-gray-200 flex items-center justify-center transition-all active:scale-90"
-                    style={{ 
-                        width: '45px', 
-                        height: '45px', 
-                        cursor: 'pointer'
-                    }}
-                >
-                    <svg 
-                        xmlns="http://www.w3.org/2000/svg" 
-                        viewBox="0 0 24 24" 
-                        fill="none" 
-                        stroke="currentColor" 
-                        strokeWidth="2.5" 
-                        strokeLinecap="round" 
-                        strokeLinejoin="round" 
-                        className="w-6 h-6"
+                <button type="button" onClick={handleRecenter} title="Recenter to child" className="map-recenter-fab">
+                    <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        width={22}
+                        height={22}
                     >
                         <circle cx="12" cy="12" r="3"></circle>
                         <path d="M3 12h3m12 0h3M12 3v3m0 12v3"></path>
@@ -85,10 +93,39 @@ function RecenterButton({ position }) {
     );
 }
 
-export default function Map({ deviceId, childName, mode, onSave, initialPosition }) {
+function timeInputFromApi(t) {
+    if (t == null || t === '') return '';
+    const s = typeof t === 'string' ? t : String(t);
+    return s.length >= 5 ? s.slice(0, 5) : s;
+}
+
+function dateInputFromApi(d) {
+    if (d == null || d === '') return '';
+    if (typeof d === 'string') return d.length >= 10 ? d.slice(0, 10) : d;
+    try {
+        return new Date(d).toISOString().slice(0, 10);
+    } catch {
+        return '';
+    }
+}
+
+function zoneMapCenter(zone) {
+    if (zone.type === 'CIRCLE' && zone.center_lat != null && zone.center_lon != null) {
+        return [parseFloat(zone.center_lat), parseFloat(zone.center_lon)];
+    }
+    if (zone.type === 'POLYGON' && zone.points?.length) {
+        const pts = [...zone.points].sort((a, b) => a.sequence_order - b.sequence_order);
+        const lat = pts.reduce((s, p) => s + parseFloat(p.latitude), 0) / pts.length;
+        const lng = pts.reduce((s, p) => s + parseFloat(p.longitude), 0) / pts.length;
+        return [lat, lng];
+    }
+    return null;
+}
+
+export default function Map({ deviceId, childName, mode, initialPosition }) {
     const [position, setPosition] = useState(initialPosition || [10.7626, 106.6602]);
     const [isOnline, setIsOnline] = useState(false);
-    
+
     const [drawType, setDrawType] = useState('POLYGON');
     const [zoneName, setZoneName] = useState('');
     const [scheduleType, setScheduleType] = useState('ALWAYS');
@@ -103,33 +140,68 @@ export default function Map({ deviceId, childName, mode, onSave, initialPosition
     const [radius, setRadius] = useState(100);
     const [existingZones, setExistingZones] = useState([]);
     const [childStatus, setChildStatus] = useState('SAFE');
-    const activeOutToastIdRef = React.useRef(null);
+    const [editingZoneId, setEditingZoneId] = useState(null);
+    const [flyTarget, setFlyTarget] = useState(null);
+    const [flyNonce, setFlyNonce] = useState(0);
 
-    const daysOfWeek = [{ label: 'S', value: 0 }, { label: 'M', value: 1 }, { label: 'T', value: 2 }, { label: 'W', value: 3 }, { label: 'T', value: 4 }, { label: 'F', value: 5 }, { label: 'S', value: 6 }];
+    const daysOfWeek = [
+        { label: 'S', value: 0 },
+        { label: 'M', value: 1 },
+        { label: 'T', value: 2 },
+        { label: 'W', value: 3 },
+        { label: 'T', value: 4 },
+        { label: 'F', value: 5 },
+        { label: 'S', value: 6 },
+    ];
+
+    const toggleDay = (dayVal) => {
+        setSelectedDays((prev) => (prev.includes(dayVal) ? prev.filter((x) => x !== dayVal) : [...prev, dayVal]));
+    };
+
+    const toggleMonthDay = (dayNum) => {
+        setSelectedMonthDays((prev) =>
+            prev.includes(dayNum) ? prev.filter((x) => x !== dayNum) : [...prev, dayNum]
+        );
+    };
 
     const getScheduleInfo = (zone) => {
-        if (zone.schedule_type === 'ALWAYS') return "Always active";
-        const timePart = zone.start_time ? ` at ${zone.start_time.slice(0, 5)}` : "";
-        const durPart = zone.duration ? ` for ${zone.duration} mins` : "";
+        if (zone.schedule_type === 'ALWAYS') return 'Always active';
+        const ts = zone.start_time != null ? timeInputFromApi(zone.start_time) : '';
+        const timePart = ts ? ` at ${ts}` : '';
+        const durPart = zone.duration ? ` for ${zone.duration} mins` : '';
         const combinedTime = timePart + durPart;
 
         switch (zone.schedule_type) {
-            case 'DAILY': return `Daily${combinedTime}`;
-            case 'WEEKLY': return `Weekly on ${zone.days_of_week?.join(', ')}${combinedTime}`;
-            case 'MONTHLY': return `Monthly on days ${zone.days_of_month?.join(', ')}${combinedTime}`;
-            case 'ONCE': 
-                const date = zone.specific_date ? new Date(zone.specific_date).toLocaleDateString() : "";
+            case 'DAILY':
+                return `Daily${combinedTime}`;
+            case 'WEEKLY':
+                return `Weekly on ${zone.days_of_week?.join(', ') || '—'}${combinedTime}`;
+            case 'MONTHLY':
+                return `Monthly on days ${zone.days_of_month?.join(', ') || '—'}${combinedTime}`;
+            case 'ONCE': {
+                const date = zone.specific_date ? new Date(zone.specific_date).toLocaleDateString() : '';
                 return `Once on ${date}${combinedTime}`;
-            default: return zone.schedule_type;
+            }
+            default:
+                return zone.schedule_type;
         }
     };
 
-    // Helper to get marker color based on status
     const getStatusColor = () => {
-        if (childStatus === 'DANGER') return '#ef4444'; // Red
-        if (childStatus === 'OFFLINE') return '#9ca3af'; // Gray
-        return '#3b82f6'; // Blue (Safe)
+        if (childStatus === 'DANGER') return '#dc2626';
+        if (childStatus === 'OFFLINE') return '#94a3b8';
+        return '#00b14f';
     };
+
+    const loadZones = useCallback(async () => {
+        if (!deviceId) return;
+        try {
+            const res = await getBoundaries(deviceId);
+            if (res.success) setExistingZones(res.data || []);
+        } catch (err) {
+            console.error('Error fetching zones:', err);
+        }
+    }, [deviceId]);
 
     useEffect(() => {
         if (initialPosition) {
@@ -138,17 +210,11 @@ export default function Map({ deviceId, childName, mode, onSave, initialPosition
     }, [initialPosition]);
 
     useEffect(() => {
-        if (!deviceId) return;
+        loadZones();
+    }, [loadZones]);
 
-        const fetchExisting = async () => {
-            try {
-                const res = await getBoundaries(deviceId);
-                if (res.success) setExistingZones(res.data);
-            } catch (err) {
-                console.log("Error fetching zones: ", err);
-            }
-        };
-        fetchExisting();
+    useEffect(() => {
+        if (!deviceId) return;
 
         const fetchStatus = async () => {
             try {
@@ -158,15 +224,17 @@ export default function Map({ deviceId, childName, mode, onSave, initialPosition
                     else if (res.data.alert_type === 'ENTER') setChildStatus('SAFE');
                     else if (res.data.alert_type === 'OUT_OF_SIGNAL') setChildStatus('OFFLINE');
                 }
-            } catch (err) { console.log("No status history found."); }
+            } catch (err) {
+                console.log('No status history found.');
+            }
         };
         fetchStatus();
 
-        const socket = io('http://localhost:3000', { withCredentials: true, transports: ['polling', 'websocket'] });
+        const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+        const socket = io(apiBase, { withCredentials: true, transports: ['polling', 'websocket'] });
         socket.on('connect', () => setIsOnline(true));
-        
+
         socket.on('location_update', (data) => {
-            console.log("📍 Location update received:", data);
             if (data.device_id === deviceId && data.latitude && data.longitude) {
                 setPosition([data.latitude, data.longitude]);
             }
@@ -175,29 +243,18 @@ export default function Map({ deviceId, childName, mode, onSave, initialPosition
         socket.on('alert_device_enter_of_zone', (data) => {
             if (data.device_id === deviceId) {
                 setChildStatus('SAFE');
-                if (activeOutToastIdRef.current) {
-                    toast.dismiss(activeOutToastIdRef.current);
-                    activeOutToastIdRef.current = null;
-                }
-                toast.success(`${childName} is safe`, { description: `${childName} entered ${data.zone_name || 'safe zone'}` });
             }
         });
 
         socket.on('alert_device_out_of_zone', (data) => {
             if (data.device_id === deviceId) {
                 setChildStatus('DANGER');
-                const id = toast.error(`🚨 EMERGENCY!`, { 
-                    description: `${childName} left ${data.zone_name || 'safe zone'}!`, 
-                    duration: Infinity 
-                });
-                activeOutToastIdRef.current = id;
             }
         });
 
         socket.on('alert_device_out_of_signal', (data) => {
             if (data.device_id === deviceId) {
                 setChildStatus('OFFLINE');
-                toast.warning(`Signal Lost`, { description: `Lost connection to ${childName}'s device.`});
             }
         });
 
@@ -205,177 +262,479 @@ export default function Map({ deviceId, childName, mode, onSave, initialPosition
         return () => socket.disconnect();
     }, [deviceId, childName]);
 
-    const handleInternalSave = () => {
-        if (!zoneName) return toast.warning("Missing Name", { description: "Please enter a Zone Name" });
-        
-        const boundaryData = {
-            type: drawType,
-            zone_name: zoneName,
-            schedule_type: scheduleType,
-            start_time: scheduleType === 'ALWAYS' ? null : startTime,
-            duration: scheduleType === 'ALWAYS' ? null : Number(duration),
-            days_of_week: scheduleType === 'WEEKLY' ? selectedDays : null,
-            days_of_month: scheduleType === 'MONTHLY' ? selectedMonthDays : null,
-            specific_date: scheduleType === 'ONCE' ? specificDate : null,
-            points: drawType === 'POLYGON' ? polygonPoints.map(p => ({ latitude: p[0], longitude: p[1] })) : null,
-            radius: drawType === 'CIRCLE' ? Number(radius) : null,
-            center_lat: drawType === 'CIRCLE' ? circleCenter?.[0] : null,
-            center_lon: drawType === 'CIRCLE' ? circleCenter?.[1] : null
-        };
-
-        if (drawType === 'POLYGON' && (!boundaryData.points || boundaryData.points.length < 3)) return toast.error("Invalid Polygon", { description: "Select at least 3 points" });
-        if (drawType === 'CIRCLE' && !circleCenter) return toast.error("Invalid Circle", { description: "Click on map to set center" });
-
-        onSave(boundaryData);
+    const startNewZone = () => {
+        setEditingZoneId(null);
+        setZoneName('');
+        setDrawType('POLYGON');
+        setScheduleType('ALWAYS');
+        setStartTime('');
+        setDuration(60);
+        setSelectedDays([]);
+        setSelectedMonthDays([]);
+        setSpecificDate('');
+        setPolygonPoints([]);
+        setCircleCenter(null);
+        setRadius(100);
     };
 
+    const beginEditZone = (z) => {
+        setEditingZoneId(z.zone_id);
+        setZoneName(z.zone_name || '');
+        setDrawType(z.type);
+        setScheduleType(z.schedule_type || 'ALWAYS');
+        setStartTime(timeInputFromApi(z.start_time));
+        setDuration(z.duration ?? 60);
+        const dow = z.days_of_week;
+        setSelectedDays(Array.isArray(dow) ? dow.map(Number) : []);
+        const dom = z.days_of_month;
+        setSelectedMonthDays(Array.isArray(dom) ? dom.map(Number) : []);
+        setSpecificDate(dateInputFromApi(z.specific_date));
+
+        if (z.type === 'POLYGON' && z.points?.length) {
+            const ordered = [...z.points].sort((a, b) => a.sequence_order - b.sequence_order);
+            setPolygonPoints(ordered.map((p) => [parseFloat(p.latitude), parseFloat(p.longitude)]));
+            setCircleCenter(null);
+        } else if (z.type === 'CIRCLE') {
+            setPolygonPoints([]);
+            setCircleCenter(
+                z.center_lat != null && z.center_lon != null
+                    ? [parseFloat(z.center_lat), parseFloat(z.center_lon)]
+                    : null
+            );
+            setRadius(Number(z.radius) || 100);
+        }
+
+        const c = zoneMapCenter(z);
+        if (c) {
+            setFlyTarget(c);
+            setFlyNonce((n) => n + 1);
+        }
+    };
+
+    const buildBoundaryPayload = () => ({
+        type: drawType,
+        zone_name: zoneName.trim(),
+        schedule_type: scheduleType,
+        start_time: scheduleType === 'ALWAYS' ? null : startTime,
+        duration: scheduleType === 'ALWAYS' ? null : Number(duration),
+        days_of_week: scheduleType === 'WEEKLY' ? selectedDays : null,
+        days_of_month: scheduleType === 'MONTHLY' ? selectedMonthDays : null,
+        specific_date: scheduleType === 'ONCE' ? specificDate : null,
+        points:
+            drawType === 'POLYGON'
+                ? polygonPoints.map((p, i) => ({
+                      sequence_order: i + 1,
+                      latitude: p[0],
+                      longitude: p[1],
+                  }))
+                : null,
+        radius: drawType === 'CIRCLE' ? Number(radius) : null,
+        center_lat: drawType === 'CIRCLE' ? circleCenter?.[0] : null,
+        center_lon: drawType === 'CIRCLE' ? circleCenter?.[1] : null,
+    });
+
+    const handleInternalSave = async () => {
+        if (!zoneName.trim()) {
+            return toast.warning('Missing name', { description: 'Please enter a zone name.' });
+        }
+
+        const boundaryData = buildBoundaryPayload();
+
+        if (drawType === 'POLYGON' && (!boundaryData.points || boundaryData.points.length < 3)) {
+            return toast.error('Invalid polygon', { description: 'Add at least three points on the map.' });
+        }
+        if (drawType === 'CIRCLE' && !circleCenter) {
+            return toast.error('Invalid circle', { description: 'Tap the map to set the center.' });
+        }
+
+        if (mode !== 'edit' || !deviceId) return;
+
+        const toastId = toast.loading(editingZoneId ? 'Updating zone…' : 'Saving zone…');
+        try {
+            if (editingZoneId) {
+                await updateBoundary(editingZoneId, boundaryData);
+                toast.success('Zone updated', {
+                    id: toastId,
+                    description: `"${boundaryData.zone_name}"`,
+                    duration: 3500,
+                });
+            } else {
+                await createBoundary(deviceId, boundaryData);
+                toast.success('Zone saved', {
+                    id: toastId,
+                    description: `"${boundaryData.zone_name}" for ${childName || 'child'}`,
+                    duration: 3500,
+                });
+            }
+            await loadZones();
+            startNewZone();
+        } catch (err) {
+            const msg = err.response?.data?.error || err.message || 'Request failed';
+            toast.error(editingZoneId ? 'Could not update zone' : 'Could not save zone', {
+                id: toastId,
+                description: msg,
+            });
+        }
+    };
+
+    const handleDeleteZone = async (z) => {
+        if (!window.confirm(`Remove safe zone “${z.zone_name}”? This cannot be undone.`)) return;
+        const toastId = toast.loading('Removing zone…');
+        try {
+            await deleteBoundary(z.zone_id);
+            toast.success('Zone removed', { id: toastId });
+            if (editingZoneId === z.zone_id) startNewZone();
+            await loadZones();
+        } catch (err) {
+            const msg = err.response?.data?.error || err.message || 'Request failed';
+            toast.error('Could not remove zone', { id: toastId, description: msg });
+        }
+    };
+
+    const zonesOnMap =
+        mode === 'edit' && editingZoneId != null
+            ? existingZones.filter((z) => z.zone_id !== editingZoneId)
+            : existingZones;
+
     return (
-        <div className="flex flex-col lg:flex-row gap-4 h-full">
+        <div className="map-root">
             {mode === 'edit' && (
-                <div className="w-full lg:w-80 bg-gray-50 p-4 rounded-xl border border-gray-200 flex flex-col gap-4 overflow-y-auto max-h-125">
-                    <h3 className="font-bold text-gray-700 uppercase text-xs">Boundary Settings</h3>
-                    <div className="flex p-1 bg-gray-200 rounded-lg">
-                        <button onClick={() => setDrawType('POLYGON')} className={`flex-1 py-1.5 text-[10px] font-bold rounded-md ${drawType === 'POLYGON' ? 'bg-white shadow' : 'text-gray-500'}`}>POLYGON</button>
-                        <button onClick={() => setDrawType('CIRCLE')} className={`flex-1 py-1.5 text-[10px] font-bold rounded-md ${drawType === 'CIRCLE' ? 'bg-white shadow' : 'text-gray-500'}`}>CIRCLE</button>
+                <aside className="map-sidebar">
+                    <div className="map-sidebar__block">
+                        <h3 className="map-sidebar__title">Your zones</h3>
+                        <p className="map-sidebar__hint">
+                            Add several safe areas per child. Tap <strong>Edit</strong> to change shape or schedule.
+                        </p>
+                        {existingZones.length === 0 ? (
+                            <p className="map-zone-empty">No zones yet — draw one in the form below.</p>
+                        ) : (
+                            <ul className="map-zone-list">
+                                {existingZones.map((z) => (
+                                    <li
+                                        key={z.zone_id}
+                                        className={`map-zone-card ${editingZoneId === z.zone_id ? 'map-zone-card--active' : ''}`}
+                                    >
+                                        <div className="map-zone-card__row">
+                                            <span className={`map-zone-pill ${z.type === 'CIRCLE' ? 'map-zone-pill--circle' : ''}`}>
+                                                {z.type === 'CIRCLE' ? 'Circle' : 'Polygon'}
+                                            </span>
+                                            <strong className="map-zone-card__name">{z.zone_name}</strong>
+                                        </div>
+                                        <p className="map-zone-card__sched">{getScheduleInfo(z)}</p>
+                                        <div className="map-zone-card__actions">
+                                            <button type="button" className="map-zone-btn" onClick={() => beginEditZone(z)}>
+                                                Edit
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="map-zone-btn map-zone-btn--danger"
+                                                onClick={() => handleDeleteZone(z)}
+                                            >
+                                                Remove
+                                            </button>
+                                        </div>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                        <button type="button" className="map-btn-secondary" onClick={startNewZone}>
+                            + New zone
+                        </button>
                     </div>
 
-                    <div>
-                        <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Zone Name</label>
-                        <input type="text" value={zoneName} onChange={(e) => setZoneName(e.target.value)} placeholder="e.g. School" className="w-full p-2 border rounded-md text-sm" />
+                    <div className="map-sidebar__divider" />
+
+                    <h3 className="map-sidebar__title">{editingZoneId ? 'Edit zone' : 'Draw new zone'}</h3>
+                    <div className="map-toggle">
+                        <button
+                            type="button"
+                            className={drawType === 'POLYGON' ? 'is-active' : ''}
+                            onClick={() => !editingZoneId && setDrawType('POLYGON')}
+                            disabled={!!editingZoneId}
+                            title={editingZoneId ? 'Type is fixed while editing' : ''}
+                        >
+                            Polygon
+                        </button>
+                        <button
+                            type="button"
+                            className={drawType === 'CIRCLE' ? 'is-active' : ''}
+                            onClick={() => !editingZoneId && setDrawType('CIRCLE')}
+                            disabled={!!editingZoneId}
+                            title={editingZoneId ? 'Type is fixed while editing' : ''}
+                        >
+                            Circle
+                        </button>
+                    </div>
+                    {editingZoneId ? (
+                        <p className="map-sidebar__hint map-sidebar__hint--compact">
+                            Adjust vertices (polygon) or drag the center (circle), then save.
+                        </p>
+                    ) : (
+                        <p className="map-sidebar__hint map-sidebar__hint--compact">
+                            Tap the map to add points. Polygon: at least three. Circle: center, then set radius.
+                        </p>
+                    )}
+
+                    <div className="map-field">
+                        <label>Zone name</label>
+                        <input
+                            type="text"
+                            value={zoneName}
+                            onChange={(e) => setZoneName(e.target.value)}
+                            placeholder="e.g. School, Home"
+                        />
                     </div>
 
                     {drawType === 'CIRCLE' && (
-                        <div>
-                            <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Radius (meters)</label>
-                            <input type="number" value={radius} onChange={(e) => setRadius(e.target.value)} className="w-full p-2 border rounded-md text-sm" />
+                        <div className="map-field">
+                            <label>Radius (m)</label>
+                            <input type="number" min={3} value={radius} onChange={(e) => setRadius(e.target.value)} />
                         </div>
                     )}
 
-                    <div>
-                        <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Schedule</label>
-                        <select value={scheduleType} onChange={(e) => setScheduleType(e.target.value)} className="w-full p-2 border rounded-md text-sm">
-                            <option value="ALWAYS">Always</option>
-                            <option value="DAILY">Daily</option>
+                    <div className="map-field">
+                        <label>Schedule</label>
+                        <select value={scheduleType} onChange={(e) => setScheduleType(e.target.value)}>
+                            <option value="ALWAYS">Always on</option>
+                            <option value="DAILY">Daily window</option>
                             <option value="WEEKLY">Weekly</option>
                             <option value="MONTHLY">Monthly</option>
-                            <option value="ONCE">Once</option>
+                            <option value="ONCE">One-off date</option>
                         </select>
                     </div>
 
                     {scheduleType !== 'ALWAYS' && (
-                        <div className="p-2 bg-white rounded border border-gray-100 flex flex-col gap-2">
-                            <div className="grid grid-cols-2 gap-2">
-                                <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="text-xs border-b focus:outline-none" />
-                                <input type="number" value={duration} onChange={(e) => setDuration(e.target.value)} placeholder="Min" className="text-xs border-b focus:outline-none" />
+                        <div className="map-schedule-box">
+                            <div className="map-schedule-grid">
+                                <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+                                <input
+                                    type="number"
+                                    value={duration}
+                                    onChange={(e) => setDuration(e.target.value)}
+                                    placeholder="Minutes"
+                                    min={1}
+                                />
                             </div>
                             {scheduleType === 'WEEKLY' && (
-                                <div className="flex justify-between">
-                                    {daysOfWeek.map(day => (
-                                        <button key={day.value} onClick={() => toggleDay(day.value)} className={`w-6 h-6 rounded-full text-[9px] border ${selectedDays.includes(day.value) ? 'bg-blue-600 text-white' : 'text-gray-400'}`}>{day.label}</button>
+                                <div className="map-day-grid">
+                                    {daysOfWeek.map((day) => (
+                                        <button
+                                            key={day.value}
+                                            type="button"
+                                            className={`map-day-btn ${selectedDays.includes(day.value) ? 'is-on' : ''}`}
+                                            onClick={() => toggleDay(day.value)}
+                                        >
+                                            {day.label}
+                                        </button>
                                     ))}
                                 </div>
                             )}
                             {scheduleType === 'MONTHLY' && (
-                                <div className="grid grid-cols-7 gap-1">
+                                <div className="map-month-grid">
                                     {[...Array(31)].map((_, i) => (
-                                        <button key={i+1} onClick={() => toggleMonthDay(i+1)} className={`text-[8px] border rounded ${selectedMonthDays.includes(i+1) ? 'bg-blue-600 text-white' : 'text-gray-400'}`}>{i+1}</button>
+                                        <button
+                                            key={i + 1}
+                                            type="button"
+                                            className={`map-month-btn ${selectedMonthDays.includes(i + 1) ? 'is-on' : ''}`}
+                                            onClick={() => toggleMonthDay(i + 1)}
+                                        >
+                                            {i + 1}
+                                        </button>
                                     ))}
                                 </div>
                             )}
-                            {scheduleType === 'ONCE' && <input type="date" value={specificDate} onChange={(e) => setSpecificDate(e.target.value)} className="text-xs border-b focus:outline-none" />}
+                            {scheduleType === 'ONCE' && (
+                                <input
+                                    type="date"
+                                    value={specificDate}
+                                    onChange={(e) => setSpecificDate(e.target.value)}
+                                />
+                            )}
                         </div>
                     )}
 
-                    <div className="mt-4 flex flex-col gap-2">
-                        <button onClick={handleInternalSave} className="w-full bg-blue-600 text-white py-2 rounded-lg font-bold text-sm shadow hover:bg-blue-700">Save Boundary</button>
-                        <button onClick={() => { setPolygonPoints([]); setCircleCenter(null); }} className="text-xs text-gray-400 hover:text-gray-600 underline">Clear Drawing</button>
+                    <div className="map-sidebar__actions">
+                        <button type="button" className="map-btn-primary" onClick={() => handleInternalSave()}>
+                            {editingZoneId ? 'Save changes' : 'Save zone'}
+                        </button>
+                        {editingZoneId ? (
+                            <button type="button" className="map-btn-ghost" onClick={startNewZone}>
+                                Cancel edit
+                            </button>
+                        ) : null}
+                        <button
+                            type="button"
+                            className="map-btn-ghost"
+                            onClick={() => {
+                                setPolygonPoints([]);
+                                setCircleCenter(null);
+                            }}
+                        >
+                            Clear drawing
+                        </button>
                     </div>
-                </div>
+                </aside>
             )}
 
-            <div className="flex-1 relative min-h-100 lg:h-125 rounded-xl overflow-hidden border shadow-lg">
-                <div className="absolute top-2 right-2 z-1000 bg-white/90 px-3 py-1 rounded-full text-[10px] font-bold shadow-sm flex items-center gap-2">
-                    <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></span>
-                    {isOnline ? 'CONNECTED' : 'OFFLINE'}
+            <div className="map-leaflet-shell">
+                <div className="map-status-pill">
+                    <span className={`map-status-dot ${isOnline ? 'map-status-dot--ok' : 'map-status-dot--bad'}`} />
+                    {isOnline ? 'Live' : 'Reconnecting'}
                 </div>
 
-                <MapContainer center={position} zoom={16} style={{ height: '100%', width: '100%' }}>
+                <MapContainer
+                    center={position}
+                    zoom={16}
+                    style={{ height: '100%', width: '100%', minHeight: 'min(65vh, 26rem)' }}
+                >
                     <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
                     <RecenterButton position={position} />
-                    {existingZones.map((zone) => (
-                        <React.Fragment key={zone.zone_id}>
-                            {zone.type === 'CIRCLE' && zone.center_lat && (
-                                <Circle 
-                                    center={[parseFloat(zone.center_lat), parseFloat(zone.center_lon)]} 
-                                    radius={zone.radius}
-                                    pathOptions={{ color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2 }}
-                                >
-                                    <Popup>
-                                        <div className="text-xs">
-                                            <div className="font-bold text-green-700">{zone.zone_name}</div>
-                                            <div><b>Type:</b> Circle</div>
-                                            <div><b>Radius:</b> {zone.radius}m</div>
-                                            <div><b>Validity:</b> {getScheduleInfo(zone)}</div>
-                                        </div>
-                                    </Popup>
-                                </Circle>
-                            )}
-                            {zone.type === 'POLYGON' && zone.points && (
-                                <Polygon 
-                                    positions={zone.points.sort((a,b) => a.sequence_order - b.sequence_order).map(p => [parseFloat(p.latitude), parseFloat(p.longitude)])}
-                                    pathOptions={{ color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2 }}
-                                >
-                                    <Popup>
-                                        <div className="text-xs">
-                                            <div className="font-bold text-green-700">{zone.zone_name}</div>
-                                            <div><b>Type:</b> Polygon</div>
-                                            <div><b>Validity:</b> {getScheduleInfo(zone)}</div>
-                                        </div>
-                                    </Popup>
-                                </Polygon>
-                            )}
-                        </React.Fragment>
+                    {mode === 'edit' && flyTarget ? <FlyToTarget target={flyTarget} nonce={flyNonce} /> : null}
+
+                    {zonesOnMap.map((zone) => (
+                            <React.Fragment key={zone.zone_id}>
+                                {zone.type === 'CIRCLE' && zone.center_lat && (
+                                    <Circle
+                                        center={[parseFloat(zone.center_lat), parseFloat(zone.center_lon)]}
+                                        radius={zone.radius}
+                                        pathOptions={{
+                                            color: '#00b14f',
+                                            fillColor: '#00b14f',
+                                            fillOpacity: 0.18,
+                                            weight: 2,
+                                        }}
+                                    >
+                                        <Popup>
+                                            <div className="map-popup">
+                                                <div className="map-popup__title">{zone.zone_name}</div>
+                                                <div>
+                                                    <b>Type:</b> Circle
+                                                </div>
+                                                <div>
+                                                    <b>Radius:</b> {zone.radius}m
+                                                </div>
+                                                <div>
+                                                    <b>Validity:</b> {getScheduleInfo(zone)}
+                                                </div>
+                                            </div>
+                                        </Popup>
+                                    </Circle>
+                                )}
+                                {zone.type === 'POLYGON' && zone.points && (
+                                    <Polygon
+                                        positions={zone.points
+                                            .sort((a, b) => a.sequence_order - b.sequence_order)
+                                            .map((p) => [parseFloat(p.latitude), parseFloat(p.longitude)])}
+                                        pathOptions={{
+                                            color: '#00b14f',
+                                            fillColor: '#00b14f',
+                                            fillOpacity: 0.18,
+                                            weight: 2,
+                                        }}
+                                    >
+                                        <Popup>
+                                            <div className="map-popup">
+                                                <div className="map-popup__title">{zone.zone_name}</div>
+                                                <div>
+                                                    <b>Type:</b> Polygon
+                                                </div>
+                                                <div>
+                                                    <b>Validity:</b> {getScheduleInfo(zone)}
+                                                </div>
+                                            </div>
+                                        </Popup>
+                                    </Polygon>
+                                )}
+                            </React.Fragment>
                     ))}
 
-                    <Marker 
-                        key={`${deviceId}-${childStatus}`} 
+                    <Marker
+                        key={`${deviceId}-${childStatus}`}
                         position={position}
                         icon={L.divIcon({
                             className: 'custom-marker',
                             html: `<div style="background-color: ${getStatusColor()}; width: 14px; height: 14px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 5px rgba(0,0,0,0.3);"></div>`,
                             iconSize: [14, 14],
-                            iconAnchor: [7, 7]
+                            iconAnchor: [7, 7],
                         })}
                     >
                         <Popup>
-                            <div className="text-sm">
-                                <b>Child:</b> {childName || "Unknown"} <br/>
-                                <span className="text-[10px] text-gray-400">ID: {deviceId}</span> <br/>
-                                <span className={`text-[10px] font-bold ${childStatus === 'DANGER' ? 'text-red-500' : 'text-blue-500'}`}>Status: {childStatus}</span>
+                            <div className="map-popup map-popup--child">
+                                <strong>{childName || 'Child'}</strong>
+                                <div className="map-popup__id">{deviceId}</div>
+                                <div
+                                    className={
+                                        childStatus === 'DANGER'
+                                            ? 'map-popup__status map-popup__status--danger'
+                                            : childStatus === 'OFFLINE'
+                                              ? 'map-popup__status map-popup__status--offline'
+                                              : 'map-popup__status map-popup__status--ok'
+                                    }
+                                >
+                                    {childStatus === 'SAFE'
+                                        ? 'In safe zone'
+                                        : childStatus === 'DANGER'
+                                          ? 'Outside zone'
+                                          : 'Offline'}
+                                </div>
                             </div>
                         </Popup>
                     </Marker>
-                    
-                    {drawType === 'POLYGON' && polygonPoints.length > 0 && <Polygon positions={polygonPoints} pathOptions={{ color: '#3b82f6', fillOpacity: 0.3 }} />}
-                    {drawType === 'POLYGON' && mode === 'edit' && polygonPoints.map((p, idx) => (
-                        <Marker key={`p-${idx}`} position={p} draggable={true} 
-                            eventHandlers={{ dragend: (e) => {
-                                const newPts = [...polygonPoints];
-                                newPts[idx] = [e.target.getLatLng().lat, e.target.getLatLng().lng];
-                                setPolygonPoints(newPts);
-                            }, click: () => setPolygonPoints(prev => prev.filter((_, i) => i !== idx)) }}
-                            icon={L.divIcon({ className: 'bg-blue-500 w-3 h-3 rounded-full border border-white' })} 
+
+                    {drawType === 'POLYGON' && polygonPoints.length > 0 && (
+                        <Polygon
+                            positions={polygonPoints}
+                            pathOptions={{ color: '#0d9488', fillColor: '#0d9488', fillOpacity: 0.22, weight: 3 }}
                         />
-                    ))}
+                    )}
+                    {drawType === 'POLYGON' &&
+                        mode === 'edit' &&
+                        polygonPoints.map((p, idx) => (
+                            <Marker
+                                key={`p-${idx}`}
+                                position={p}
+                                draggable
+                                eventHandlers={{
+                                    dragend: (e) => {
+                                        const newPts = [...polygonPoints];
+                                        newPts[idx] = [e.target.getLatLng().lat, e.target.getLatLng().lng];
+                                        setPolygonPoints(newPts);
+                                    },
+                                    click: () => setPolygonPoints((prev) => prev.filter((_, i) => i !== idx)),
+                                }}
+                                icon={L.divIcon({
+                                    className: '',
+                                    html: '<div style="width:11px;height:11px;background:#0d9488;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.25)"></div>',
+                                    iconSize: [11, 11],
+                                    iconAnchor: [5, 5],
+                                })}
+                            />
+                        ))}
                     {drawType === 'CIRCLE' && circleCenter && (
                         <>
-                            <Circle center={circleCenter} radius={radius} pathOptions={{ color: '#ef4444', fillOpacity: 0.2 }} />
-                            <Marker position={circleCenter} draggable={true} eventHandlers={{ dragend: (e) => setCircleCenter([e.target.getLatLng().lat, e.target.getLatLng().lng]) }} />
+                            <Circle
+                                center={circleCenter}
+                                radius={radius}
+                                pathOptions={{ color: '#dc2626', fillColor: '#fecaca', fillOpacity: 0.35, weight: 3 }}
+                            />
+                            <Marker
+                                position={circleCenter}
+                                draggable
+                                eventHandlers={{
+                                    dragend: (e) =>
+                                        setCircleCenter([e.target.getLatLng().lat, e.target.getLatLng().lng]),
+                                }}
+                            />
                         </>
                     )}
                     <MapResizer />
                     <ChangeView center={position} />
-                    <MapClickHandler mode={mode} drawType={drawType} setPoints={setPolygonPoints} setCircleCenter={setCircleCenter} />
+                    <MapClickHandler
+                        mode={mode}
+                        drawType={drawType}
+                        setPoints={setPolygonPoints}
+                        setCircleCenter={setCircleCenter}
+                    />
                 </MapContainer>
             </div>
         </div>

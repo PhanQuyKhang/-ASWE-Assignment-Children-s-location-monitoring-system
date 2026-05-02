@@ -1,4 +1,5 @@
 const { sql } = require('../database/connection');
+const { validate: validateUUID } = require('uuid');
 
 class Device {
     static async findbyID(device_id) {
@@ -24,8 +25,9 @@ class Device {
             updates.boundary_status = boundary_status;
         }
 
+        // DB column is `status` (ACTIVE | INACTIVE | NOSIGNAL), not device_status
         if (device_status !== undefined && device_status !== null) {
-            updates.device_status = device_status;
+            updates.status = device_status;
         }
 
         const [result] = await sql`
@@ -74,9 +76,20 @@ class Device {
 
     static async addDevice(data) {
         try {
-            const { userId, childName, timezone } = data;
-            
-            // Execute the insert query using Neon serverless sql template
+            const { userId, childName, timezone, deviceId } = data;
+
+            if (deviceId) {
+                if (!validateUUID(deviceId)) {
+                    throw new Error('Invalid device UUID');
+                }
+                const [result] = await sql`
+                    INSERT INTO devices (device_id, user_id, child_name, timezone)
+                    VALUES (${deviceId}::uuid, ${userId}, ${childName}, ${timezone})
+                    RETURNING *;
+                `;
+                return result || null;
+            }
+
             const [result] = await sql`
                 INSERT INTO devices (user_id, child_name, timezone)
                 VALUES (${userId}, ${childName}, ${timezone})
@@ -87,6 +100,38 @@ class Device {
             console.error("❌ DB Error in addDevice:", error);
             throw error; 
         }
+    }
+
+    static async updateForUser(userId, deviceId, fields) {
+        if (!validateUUID(deviceId)) {
+            throw new Error('Invalid device UUID');
+        }
+        const updates = {};
+        if (fields.childName !== undefined) updates.child_name = fields.childName;
+        if (fields.timezone !== undefined) updates.timezone = fields.timezone;
+        if (Object.keys(updates).length === 0) {
+            return Device.findbyID(deviceId);
+        }
+        const [result] = await sql`
+            UPDATE devices
+            SET ${sql(updates)}
+            WHERE device_id = ${deviceId}::uuid AND user_id = ${userId}
+            RETURNING *;
+        `;
+        return result || null;
+    }
+
+    static async softDeleteForUser(userId, deviceId) {
+        if (!validateUUID(deviceId)) {
+            throw new Error('Invalid device UUID');
+        }
+        const [result] = await sql`
+            UPDATE devices
+            SET status = 'INACTIVE'
+            WHERE device_id = ${deviceId}::uuid AND user_id = ${userId}
+            RETURNING *;
+        `;
+        return result || null;
     }
     static async getActiveDevices(userId) {
         try {

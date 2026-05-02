@@ -186,9 +186,71 @@ class Boundary {
             throw error;
         }
     }
-    
-    
 
+    /**
+     * Update zone metadata and geometry (type must stay the same; replace circle row or poly points).
+     */
+    static async updateZone(zone_id, data) {
+        const {
+            zone_name,
+            schedule_type,
+            start_time,
+            duration,
+            days_of_week,
+            days_of_month,
+            specific_date,
+            type,
+            radius,
+            center_lat,
+            center_lon,
+            points,
+        } = data;
+
+        return sql.begin(async (tx) => {
+            const [updated] = await tx`
+                UPDATE zones SET
+                    zone_name = ${zone_name},
+                    schedule_type = ${schedule_type},
+                    start_time = ${start_time},
+                    duration = ${duration},
+                    days_of_week = ${days_of_week},
+                    days_of_month = ${days_of_month},
+                    specific_date = ${specific_date}
+                WHERE zone_id = ${zone_id}
+                RETURNING zone_id, device_id, type;
+            `;
+
+            if (!updated) {
+                throw new Error('Zone not found');
+            }
+
+            if (type === 'CIRCLE') {
+                await tx`
+                    UPDATE circles SET
+                        center_lat = ${center_lat},
+                        center_lon = ${center_lon},
+                        radius = ${radius}
+                    WHERE zone_id = ${zone_id}
+                `;
+            } else {
+                await tx`DELETE FROM poly_points WHERE zone_id = ${zone_id}`;
+                for (const p of points) {
+                    await tx`
+                        INSERT INTO poly_points (
+                            zone_id, sequence_order, latitude, longitude
+                        ) VALUES (
+                            ${zone_id},
+                            ${p.sequence_order},
+                            ${p.latitude},
+                            ${p.longitude}
+                        );
+                    `;
+                }
+            }
+
+            return updated;
+        });
+    }
 }
 
 module.exports = Boundary;

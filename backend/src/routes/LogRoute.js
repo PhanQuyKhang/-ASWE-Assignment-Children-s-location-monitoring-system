@@ -3,9 +3,9 @@ const router = express.Router();
 const LogController = require('../controllers/LogController');
 const validateDeviceId = require("../middleware/validateDeviceId");
 const authMiddleware = require('../middleware/authMiddleware');
+const validateTraccarSecret = require('../middleware/validateTraccarSecret');
 
-// 1. Nhận dữ liệu từ Traccar/Arduino và lưu vào DB
-router.post('/traccar', LogController.saveLog);
+router.post('/traccar', validateTraccarSecret, LogController.saveLog);
 
 // 2. Lấy vị trí mới nhất của 1 thiết bị
 router.get(

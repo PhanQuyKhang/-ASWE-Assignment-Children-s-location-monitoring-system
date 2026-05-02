@@ -49,8 +49,9 @@ const BoundaryController = {
     updateZone: async (req, res) => { 
         try {
             const userId = req.user.user_id;
+            const zone_id = req.zoneIdNumeric;
             const data = await validateZone(req.body);
-            //await BoundaryService.updateZone(data, userId);
+            await BoundaryService.updateZone(userId, zone_id, data);
             return res.json({ success: true });
         } catch (err) {
             console.log(err);
@@ -61,7 +62,7 @@ const BoundaryController = {
     deleteZone: async (req, res) => { 
         try {
             const userId = req.user.user_id;
-            const { zone_id } = req.params;
+            const zone_id = req.zoneIdNumeric;
             await BoundaryService.deleteZone(userId, zone_id);
             return res.json({ success: true });
         } catch (err) {

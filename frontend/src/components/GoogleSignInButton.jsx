@@ -1,5 +1,5 @@
 export default function GoogleSignInButton({ children = 'Continue with Google' }) {
-  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
+  const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
   function handleClick() {
     window.location.href = `${apiBaseUrl}/auth/google/start`;

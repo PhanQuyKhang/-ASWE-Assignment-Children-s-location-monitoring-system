@@ -1,6 +1,8 @@
 const nodemailer = require('nodemailer');
 const { DateTime } = require('luxon');
 
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+
 function createTransport() {
   if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
     return null;
@@ -44,30 +46,48 @@ async function sendPasswordResetEmail({ to, fname, resetUrl }) {
   });
 }
 
-async function sendAlertEmail({ to, fname, event }) {
+async function sendAlertEmail({ to, fname, event, alertType = 'EXIT' }) {
   const transport = createTransport();
   if (!transport) {
     throw new Error('Mail service is not configured');
   }
 
-  const { device_id, child_name, timestamp, lat, lon, battery_level, activity_type, timezone } = event;
+  const lat = event.lat ?? event.latitude;
+  const lon = event.lon ?? event.longitude;
+  const { device_id, child_name, timestamp, battery_level, activity_type, timezone } = event;
 
   const formattedTime = DateTime.fromJSDate(timestamp)
-    .setZone(timezone)
-    .toLocaleString(DateTime.DATETIME_MED); 
+    .setZone(timezone || 'UTC')
+    .toLocaleString(DateTime.DATETIME_MED);
 
-  const mapsLink = `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
+  const mapsLink =
+    lat != null && lon != null
+      ? `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`
+      : `${FRONTEND_URL.replace(/\/$/, '')}/dashboard`;
 
-  // 4. Send the email
+  const subject =
+    alertType === 'OUT_OF_SIGNAL'
+      ? `⚠️ CLMS: ${child_name || 'Device'} — signal lost`
+      : alertType === 'EXIT'
+        ? `⚠️ Alert: ${child_name || 'Device'} is Out of Zone`
+        : `CLMS: ${child_name || 'Device'} alert`;
+
+  const bodyIntro =
+    alertType === 'OUT_OF_SIGNAL'
+      ? `<p><strong>${child_name || 'Your device'}</strong> (${device_id}) has gone offline (no location ping). Last known update: <strong>${formattedTime}</strong>.</p>`
+      : alertType === 'EXIT'
+        ? `<p><strong>${child_name || 'Your device'}</strong> (${device_id}) has moved out of the designated Safe Zone at <strong>${formattedTime}</strong>.</p>`
+        : `<p>Alert for <strong>${child_name || 'Your device'}</strong> (${device_id}) at <strong>${formattedTime}</strong>.</p>`;
+
   await transport.sendMail({
     from: process.env.MAIL_FROM || process.env.SMTP_USER,
     to,
-    subject: `⚠️ Alert: ${child_name || 'Device'} is Out of Zone`,
+    subject,
     html: `
       <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #16301f;">
         <h2 style="color: #d9534f; margin-bottom: 8px;">Device Alert</h2>
         <p>Hello ${fname || 'Parent'},</p>
-        <p><strong>${child_name || 'Your device'}</strong> (${device_id})has moved out of the designated Safe Zone at <strong>${formattedTime}</strong>.</p>
+        ${bodyIntro}
         
         <div style="background-color: #fcf4f4; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #d9534f;">
             <p style="margin: 0 0 10px 0;"><strong>Current Status:</strong></p>

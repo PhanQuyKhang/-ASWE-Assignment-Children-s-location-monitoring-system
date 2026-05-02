@@ -6,10 +6,10 @@ const authMiddleware = require('../middleware/authMiddleware');
 
 
 router.post('/add', authMiddleware, DeviceController.addDevice);
+router.get('/active', authMiddleware, DeviceController.getActiveDevices);
 router.get('/', authMiddleware, DeviceController.getDevices);
-
-//router.post('/:deviceId', validateDeviceId, authMiddleware, DeviceController.getDevicebyId);
-
-
+router.get('/:device_id', authMiddleware, validateDeviceId, DeviceController.getDeviceById);
+router.put('/:device_id', authMiddleware, validateDeviceId, DeviceController.updateDevice);
+router.delete('/:device_id', authMiddleware, validateDeviceId, DeviceController.deleteDevice);
 
 module.exports = router;

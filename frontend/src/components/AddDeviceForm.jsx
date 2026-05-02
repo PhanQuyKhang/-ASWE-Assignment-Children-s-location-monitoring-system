@@ -1,104 +1,117 @@
-import { useState } from 'react';
-import axios from 'axios';
+import { useState, useMemo } from 'react';
+import { addDevice } from '../services/deviceService';
 
-const AddDeviceForm = () => {
-  // Store form input values
-  const [formData, setFormData] = useState({ childName: '', deviceId: '' });
-  
-  // Store request status (loading, success message, or error message)
+function defaultTimezone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Ho_Chi_Minh';
+  } catch {
+    return 'Asia/Ho_Chi_Minh';
+  }
+}
+
+export default function AddDeviceForm({ onSuccess }) {
+  const initialTz = useMemo(() => defaultTimezone(), []);
+  const [formData, setFormData] = useState({
+    childName: '',
+    deviceId: '',
+    timezone: initialTz,
+  });
   const [status, setStatus] = useState({ loading: false, error: '', success: '' });
 
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    // Reset status to loading state before sending request
     setStatus({ loading: true, error: '', success: '' });
 
     try {
-      // Send POST request to the backend API
-      const response = await axios.post('http://localhost:3000/device', formData);
-      
-      // Update status on success
-      setStatus({ loading: false, error: '', success: response.data.message });
-      
-      // Clear form inputs after successful submission
-      setFormData({ childName: '', deviceId: '' });
-      
+      const payload = {
+        childName: formData.childName.trim(),
+        timezone: formData.timezone.trim() || initialTz,
+      };
+      const trimmedId = formData.deviceId.trim();
+      if (trimmedId) {
+        payload.deviceId = trimmedId;
+      }
+
+      const res = await addDevice(payload);
+      setStatus({
+        loading: false,
+        error: '',
+        success: res.message || 'Device added successfully.',
+      });
+      setFormData({ childName: '', deviceId: '', timezone: initialTz });
+      onSuccess?.(res.data);
     } catch (error) {
-      // Extract error message from backend or set default network error
-      const errorMessage = error.response?.data?.message || 'Failed to connect to the server.';
-      
-      // Update status on failure
+      const errorMessage =
+        error.response?.data?.message || error.message || 'Failed to add device.';
       setStatus({ loading: false, error: errorMessage, success: '' });
     }
   };
 
   return (
-    <div 
-      className="w-full max-w-md p-8 rounded-2xl text-left relative"
-      style={{ backgroundColor: 'var(--bg)', border: '1px solid var(--border)', boxShadow: 'var(--shadow)' }}
-    >
-      <h2 className="text-center mb-6 font-bold" style={{ color: 'var(--text-h)' }}>
-        Add Tracking Device
-      </h2>
+    <div className="add-device-form">
+      <p className="add-device-form__hint">
+        Paste the UUID into Traccar Client as the device identifier, or leave blank to let the server
+        generate one — then copy it from the list beside this form.
+      </p>
 
-      {/* Display Success Message */}
-      {status.success && (
-        <div className="mb-4 p-3 rounded text-sm text-green-700 bg-green-100 border border-green-400">
-          {status.success}
+      {status.success ? (
+        <div className="add-device-form__banner add-device-form__banner--ok">{status.success}</div>
+      ) : null}
+      {status.error ? (
+        <div className="add-device-form__banner add-device-form__banner--err">{status.error}</div>
+      ) : null}
+
+      <form onSubmit={handleSubmit} className="form-grid">
+        <div className="field">
+          <label htmlFor="childName">Child&apos;s name</label>
+          <input
+            type="text"
+            id="childName"
+            name="childName"
+            placeholder="e.g. Alex"
+            value={formData.childName}
+            onChange={handleChange}
+            required
+            disabled={status.loading}
+          />
         </div>
-      )}
 
-      {/* Display Error Message */}
-      {status.error && (
-        <div className="mb-4 p-3 rounded text-sm text-red-700 bg-red-100 border border-red-400">
-          {status.error}
+        <div className="field">
+          <label htmlFor="deviceId">Device UUID (optional)</label>
+          <input
+            type="text"
+            id="deviceId"
+            name="deviceId"
+            className="font-mono text-sm"
+            placeholder="Leave empty to auto-generate"
+            value={formData.deviceId}
+            onChange={handleChange}
+            disabled={status.loading}
+          />
         </div>
-      )}
 
-      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-        {[
-          { id: 'childName', label: "Child's Name", placeholder: 'e.g., Tom' },
-          { id: 'deviceId', label: 'Device ID (UUID)', placeholder: 'e.g., a6289523-a7a4-...' }
-        ].map((field) => (
-          <div key={field.id}>
-            <label htmlFor={field.id} className="block text-sm font-medium mb-1" style={{ color: 'var(--text)' }}>
-              {field.label}
-            </label>
-            <input
-              type="text"
-              id={field.id}
-              name={field.id}
-              className="w-full px-4 py-2 rounded-lg outline-none focus:ring-2 transition-colors disabled:opacity-50"
-              style={{ 
-                backgroundColor: 'var(--code-bg)', 
-                border: '1px solid var(--border)',
-                color: 'var(--text-h)'
-              }}
-              placeholder={field.placeholder}
-              value={formData[field.id]}
-              onChange={handleChange}
-              required
-              disabled={status.loading}
-            />
-          </div>
-        ))}
+        <div className="field">
+          <label htmlFor="timezone">Timezone (IANA)</label>
+          <input
+            type="text"
+            id="timezone"
+            name="timezone"
+            value={formData.timezone}
+            onChange={handleChange}
+            required
+            disabled={status.loading}
+          />
+        </div>
 
-        <button
-          type="submit"
-          disabled={status.loading}
-          className="w-full font-semibold py-2.5 rounded-lg transition-all mt-2 disabled:opacity-70"
-          style={{ backgroundColor: 'var(--accent)', color: '#fff' }}
-        >
-          {status.loading ? 'Saving...' : 'Save Device'}
+        <button className="btn btn-brand btn-block" type="submit" disabled={status.loading}>
+          {status.loading ? 'Saving…' : 'Register device'}
         </button>
       </form>
     </div>
   );
-};
-
-export default AddDeviceForm;
+}

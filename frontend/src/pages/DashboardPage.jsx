@@ -1,16 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Toaster, toast } from 'sonner';
-// Hooks
 import useAuth from '../hooks/useAuth';
 import useDevices from '../hooks/useDevice';
-// Services
-import { createBoundary } from '../services/boundaryService';
-
-// Components
+import { getAllUserAlerts } from '../services/alertService';
 import Map from '../components/Map';
-import axios from 'axios';
+import AddDeviceForm from '../components/AddDeviceForm';
+import ParentRealtimeToasts from '../components/ParentRealtimeToasts';
 
-const TAB_KEYS = ['profile', 'map', 'boundary'];
+const TAB_KEYS = ['profile', 'devices', 'map', 'boundary', 'alerts'];
 
 function getInitials(user) {
   const first = user?.fname?.trim()?.[0] || 'P';
@@ -18,12 +15,19 @@ function getInitials(user) {
   return `${first}${last}`.toUpperCase();
 }
 
+function alertBadgeClass(type) {
+  if (type === 'EXIT') return 'badge-type badge-type--exit';
+  if (type === 'ENTER') return 'badge-type badge-type--enter';
+  if (type === 'OUT_OF_SIGNAL') return 'badge-type badge-type--signal';
+  return 'badge-type badge-type--other';
+}
+
 export default function DashboardPage() {
   const { user, logout, updateProfile, changePassword } = useAuth();
-  const { devices, selectedDevice, setSelectedDevice, loading } = useDevices(user?.user_id);
+  const { devices, loading, refetch: refetchDevices } = useDevices(user?.user_id);
   const [activeTab, setActiveTab] = useState('profile');
   const [configTarget, setConfigTarget] = useState(null);
-  const [viewTarget, setViewTarget] = useState(null);  
+  const [viewTarget, setViewTarget] = useState(null);
   const [profileForm, setProfileForm] = useState({ fname: '', lname: '', phone: '' });
   const [passwordForm, setPasswordForm] = useState({
     newPassword: '',
@@ -31,8 +35,14 @@ export default function DashboardPage() {
   });
   const [saving, setSaving] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
-  const [notice, setNotice] = useState('');
-  const [error, setError] = useState('');
+  const [profileNotice, setProfileNotice] = useState('');
+  const [profileError, setProfileError] = useState('');
+  const [passwordNotice, setPasswordNotice] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [alertsList, setAlertsList] = useState([]);
+  const [alertsCursor, setAlertsCursor] = useState(null);
+  const [alertsLoading, setAlertsLoading] = useState(false);
+
   useEffect(() => {
     setProfileForm({
       fname: user?.fname || '',
@@ -41,7 +51,6 @@ export default function DashboardPage() {
     });
   }, [user]);
 
-  // Reset thiết bị đang chọn khi người dùng chuyển tab
   useEffect(() => {
     setConfigTarget(null);
     setViewTarget(null);
@@ -51,31 +60,82 @@ export default function DashboardPage() {
     () => ({
       profile: {
         title: 'Profile',
-        subtitle: 'Manage your account and password reset.',
+        subtitle: 'Your account details and password.',
+      },
+      devices: {
+        title: 'Devices',
+        subtitle: 'Register each child device and copy the UUID into Traccar Client.',
       },
       map: {
-        title: 'Map',
-        subtitle: 'View your child live on the map.',
+        title: 'Live map',
+        subtitle: 'Pick a child to see location updates in real time.',
       },
       boundary: {
-        title: 'Boundary',
-        subtitle: 'Set the safe zone for your child.',
+        title: 'Safe zones',
+        subtitle: 'Draw circles or polygons — you can add several zones per child.',
+      },
+      alerts: {
+        title: 'Alerts',
+        subtitle: 'History of enter, exit, and offline events.',
       },
     }),
     []
   );
 
+  useEffect(() => {
+    if (activeTab !== 'alerts') return;
+    let cancelled = false;
+    (async () => {
+      setAlertsLoading(true);
+      setAlertsList([]);
+      setAlertsCursor(null);
+      try {
+        const { alerts, nextCursor } = await getAllUserAlerts({ limit: 25 });
+        if (!cancelled) {
+          setAlertsList(alerts);
+          setAlertsCursor(nextCursor);
+        }
+      } catch (e) {
+        console.error(e);
+        toast.error('Could not load alerts');
+      } finally {
+        if (!cancelled) setAlertsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab]);
+
+  async function loadMoreAlerts() {
+    if (!alertsCursor || alertsLoading) return;
+    setAlertsLoading(true);
+    try {
+      const { alerts, nextCursor } = await getAllUserAlerts({
+        limit: 25,
+        cursor: alertsCursor,
+      });
+      setAlertsList((prev) => [...prev, ...alerts]);
+      setAlertsCursor(nextCursor);
+    } catch (e) {
+      console.error(e);
+      toast.error('Could not load more alerts');
+    } finally {
+      setAlertsLoading(false);
+    }
+  }
+
   async function handleProfileSubmit(event) {
     event.preventDefault();
     setSaving(true);
-    setNotice('');
-    setError('');
+    setProfileNotice('');
+    setProfileError('');
 
     try {
       await updateProfile(profileForm);
-      setNotice('Account information updated successfully.');
+      setProfileNotice('Account information updated successfully.');
     } catch (err) {
-      setError(err?.response?.data?.error || 'Unable to update account.');
+      setProfileError(err?.response?.data?.error || 'Unable to update account.');
     } finally {
       setSaving(false);
     }
@@ -84,11 +144,11 @@ export default function DashboardPage() {
   async function handleChangePassword(event) {
     event.preventDefault();
     setChangingPassword(true);
-    setNotice('');
-    setError('');
+    setPasswordNotice('');
+    setPasswordError('');
 
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      setError('New password and confirm password do not match.');
+      setPasswordError('New password and confirm password do not match.');
       setChangingPassword(false);
       return;
     }
@@ -98,41 +158,20 @@ export default function DashboardPage() {
         newPassword: passwordForm.newPassword,
       });
       setPasswordForm({ newPassword: '', confirmPassword: '' });
-      setNotice('Password changed successfully.');
+      setPasswordNotice('Password changed successfully.');
     } catch (err) {
-      setError(err?.response?.data?.error || 'Unable to change password.');
+      setPasswordError(err?.response?.data?.error || 'Unable to change password.');
     } finally {
       setChangingPassword(false);
     }
   }
 
-  const handleSaveBoundary = async (finalBoundaryData) => {
-    const toastId = toast.loading("Saving boundary..."); 
-    try {
-      const deviceId = configTarget.device_id;
-      
-      const result = await createBoundary(deviceId, finalBoundaryData);
-      
-      if (result) {
-        toast.success("Success!", {
-          id: toastId,
-          description: `Boundary "${finalBoundaryData.zone_name}" set for ${configTarget.child_name}`,
-          duration: 4000,
-        });
-        setConfigTarget(null);
-      }
-    } catch (err) {
-      const errorMsg = err.response?.data?.error || err.message;
-      toast.error("Failed to save", {
-        id: toastId,
-        description: errorMsg,
-      });
-    }
-  };
+  const activeMeta = tabMeta[activeTab];
 
   return (
     <main className="dashboard-page">
-      <Toaster richColors position="top-right" closeButton />{}
+      <Toaster richColors position="top-right" closeButton />
+      <ParentRealtimeToasts devices={devices} />
       <section className="dashboard-shell">
         <header className="dashboard-header">
           <div className="dashboard-brand-row">
@@ -148,10 +187,10 @@ export default function DashboardPage() {
           <div className="dashboard-hero">
             <div>
               <p className="dashboard-greeting">Hello, {user?.fname}</p>
-              <h1>Family safety, organized by tab.</h1>
+              <h1>Child Location Monitoring</h1>
               <p>
-                Use the tabs above to manage your profile, inspect the live map, and configure the
-                safe boundary.
+                Manage devices, live tracking, multiple safe zones per child, and alert history in one
+                place.
               </p>
             </div>
             <div className="dashboard-hero-card">
@@ -180,10 +219,14 @@ export default function DashboardPage() {
         </nav>
 
         <section className="dashboard-body">
+          <div className="dashboard-body-intro">
+            <p>{activeMeta.subtitle}</p>
+          </div>
+
           {activeTab === 'profile' ? (
             <div className="dashboard-grid-layout">
               <article className="card dashboard-card profile-summary-card">
-                <div className="mini-card-label">Profile</div>
+                <div className="mini-card-label">Overview</div>
                 <div className="account-summary account-summary-wide">
                   <div className="avatar large">{getInitials(user)}</div>
                   <div>
@@ -191,7 +234,7 @@ export default function DashboardPage() {
                       {user?.fname} {user?.lname}
                     </h2>
                     <p>{user?.email}</p>
-                    <p>{user?.phone ? `Phone: ${user.phone}` : 'Phone number not set'}</p>
+                    <p>{user?.phone ? `Phone: ${user.phone}` : 'Phone not set (needed for SMS alerts)'}</p>
                   </div>
                 </div>
               </article>
@@ -208,7 +251,6 @@ export default function DashboardPage() {
                         required
                       />
                     </div>
-
                     <div className="field">
                       <label>Last name</label>
                       <input
@@ -218,7 +260,6 @@ export default function DashboardPage() {
                       />
                     </div>
                   </div>
-
                   <div className="field">
                     <label>Phone number</label>
                     <input
@@ -226,12 +267,10 @@ export default function DashboardPage() {
                       onChange={(e) => setProfileForm((prev) => ({ ...prev, phone: e.target.value }))}
                     />
                   </div>
-
-                  {error ? <p className="error-text">{error}</p> : null}
-                  {notice ? <p className="ok-text">{notice}</p> : null}
-
+                  {profileError ? <p className="error-text">{profileError}</p> : null}
+                  {profileNotice ? <p className="ok-text">{profileNotice}</p> : null}
                   <button className="btn btn-brand btn-block" type="submit" disabled={saving}>
-                    {saving ? 'Saving...' : 'Save changes'}
+                    {saving ? 'Saving…' : 'Save profile'}
                   </button>
                 </form>
               </article>
@@ -251,7 +290,6 @@ export default function DashboardPage() {
                       required
                     />
                   </div>
-
                   <div className="field">
                     <label>Confirm new password</label>
                     <input
@@ -264,101 +302,205 @@ export default function DashboardPage() {
                       required
                     />
                   </div>
-
-                  <p className="card-note">Your password is updated immediately in this session.</p>
-
+                  <p className="card-note">Use at least 8 characters.</p>
+                  {passwordError ? <p className="error-text">{passwordError}</p> : null}
+                  {passwordNotice ? <p className="ok-text">{passwordNotice}</p> : null}
                   <button className="btn btn-brand btn-block" type="submit" disabled={changingPassword}>
-                    {changingPassword ? 'Updating...' : 'Change password'}
+                    {changingPassword ? 'Updating…' : 'Update password'}
                   </button>
                 </form>
               </article>
             </div>
+          ) : activeTab === 'devices' ? (
+            <div className="dashboard-grid-layout">
+              <article className="card dashboard-card">
+                <div className="mini-card-label">Add device</div>
+                <AddDeviceForm
+                  onSuccess={() => {
+                    refetchDevices();
+                    toast.success('Device list updated');
+                  }}
+                />
+              </article>
+              <article className="card dashboard-card">
+                <div className="mini-card-label">Registered devices</div>
+                {loading ? (
+                  <p className="empty-hint">Loading devices…</p>
+                ) : devices.length === 0 ? (
+                  <p className="empty-hint">No devices yet. Add a child above and paste the UUID into Traccar.</p>
+                ) : (
+                  <ul className="device-list">
+                    {devices.map((d) => (
+                      <li key={d.device_id} className="device-list__item">
+                        <div className="device-list__name">{d.child_name}</div>
+                        <div className="device-list__id">{d.device_id}</div>
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-compact"
+                          onClick={() => {
+                            navigator.clipboard.writeText(d.device_id);
+                            toast.success('Device ID copied');
+                          }}
+                        >
+                          Copy UUID
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </article>
+            </div>
           ) : activeTab === 'map' ? (
-            /* --- TAB MAP: LUỒNG CHỌN DEVICE ĐỂ XEM --- */
-            <article className="card dashboard-card">
+            <article className="card dashboard-card dashboard-panel-card">
               {!viewTarget ? (
-                <div className="p-4">
-                  <div className="mini-card-label">Select Child</div>
-                  <h2 className="text-xl font-bold mb-4 text-gray-800">Who do you want to track?</h2>
+                <>
+                  <div className="tab-panel-head">
+                    <div className="mini-card-label">Select child</div>
+                    <h2>Who do you want to track?</h2>
+                    <p>Choose a device to open the live map and connection status.</p>
+                  </div>
                   {loading ? (
-                    <p className="text-gray-500 italic">Loading children list...</p>
+                    <p className="empty-hint">Loading devices…</p>
+                  ) : devices.length === 0 ? (
+                    <p className="empty-hint">Add a device in the Devices tab first.</p>
                   ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">
+                    <div className="picker-grid">
                       {devices.map((device) => (
                         <button
                           key={device.device_id}
+                          type="button"
+                          className="picker-card picker-card--map"
                           onClick={() => setViewTarget(device)}
-                          className="flex items-center gap-4 p-4 border-2 border-gray-100 rounded-xl hover:border-blue-500 hover:bg-blue-50 transition-all text-left"
                         >
-                          <div className="avatar bg-blue-100 text-blue-700 font-bold">{device.child_name?.[0]?.toUpperCase()}</div>
+                          <span className="picker-card__avatar">{device.child_name?.[0]?.toUpperCase()}</span>
                           <div>
-                            <div className="font-bold text-gray-800">{device.child_name}</div>
-                            <div className="text-xs text-gray-400">View live location</div>
+                            <div className="picker-card__title">{device.child_name}</div>
+                            <div className="picker-card__meta">Live location &amp; status</div>
                           </div>
                         </button>
                       ))}
                     </div>
                   )}
-                </div>
+                </>
               ) : (
-                <div>
-                   <div className="flex justify-between items-center mb-4 px-2 py-2 bg-blue-50 rounded-lg border border-blue-100">
-                    <span className="text-sm font-semibold text-blue-800 ml-2">Tracking: {viewTarget.child_name}</span>
-                    <button onClick={() => setViewTarget(null)} className="text-xs font-bold text-gray-500 hover:text-red-500 uppercase tracking-tight">Change Child</button>
+                <>
+                  <div className="context-bar context-bar--map">
+                    <strong>Tracking: {viewTarget.child_name}</strong>
+                    <button type="button" className="btn-text" onClick={() => setViewTarget(null)}>
+                      Change child
+                    </button>
                   </div>
-                  <Map 
-                      mode="view" 
-                      deviceId={viewTarget.device_id}
-                      childName={viewTarget.child_name} 
-                      // Truyền vị trí cuối cùng từ DB vào làm vị trí mặc định ban đầu
-                      initialPosition={viewTarget.last_lat && viewTarget.last_lon ? [parseFloat(viewTarget.last_lat), parseFloat(viewTarget.last_lon)] : null}
+                  <Map
+                    mode="view"
+                    deviceId={viewTarget.device_id}
+                    childName={viewTarget.child_name}
+                    initialPosition={
+                      viewTarget.last_lat && viewTarget.last_lon
+                        ? [parseFloat(viewTarget.last_lat), parseFloat(viewTarget.last_lon)]
+                        : null
+                    }
                   />
-                </div>
+                </>
+              )}
+            </article>
+          ) : activeTab === 'alerts' ? (
+            <article className="card dashboard-card">
+              <div className="mini-card-label">History</div>
+              {alertsLoading && alertsList.length === 0 ? (
+                <p className="empty-hint">Loading alerts…</p>
+              ) : alertsList.length === 0 ? (
+                <p className="empty-hint">No alerts yet. Events appear when a child leaves a zone or goes offline.</p>
+              ) : (
+                <>
+                  <div className="alert-table-wrap">
+                    <table className="alert-table">
+                      <thead>
+                        <tr>
+                          <th>When</th>
+                          <th>Child</th>
+                          <th>Type</th>
+                          <th>Message</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {alertsList.map((a) => (
+                          <tr key={a.alert_id}>
+                            <td>{a.created_at}</td>
+                            <td>{a.child_name || '—'}</td>
+                            <td>
+                              <span className={alertBadgeClass(a.alert_type)}>{a.alert_type}</span>
+                            </td>
+                            <td title={a.message}>{a.message}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {alertsCursor ? (
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      style={{ marginTop: '1rem' }}
+                      disabled={alertsLoading}
+                      onClick={() => loadMoreAlerts()}
+                    >
+                      {alertsLoading ? 'Loading…' : 'Load more'}
+                    </button>
+                  ) : null}
+                </>
               )}
             </article>
           ) : (
-            /* --- TAB BOUNDARY (Giữ nguyên luồng của bạn) --- */
-            <article className="card dashboard-card">
+            <article className="card dashboard-card dashboard-panel-card">
               {!configTarget ? (
-                <div className="p-4">
-                  <div className="mini-card-label">Select Child</div>
-                  <h2 className="text-xl font-bold mb-4 text-gray-800">Who do you want to set a boundary for?</h2>
+                <>
+                  <div className="tab-panel-head">
+                    <div className="mini-card-label">Select child</div>
+                    <h2>Who is this zone for?</h2>
+                    <p>You can create multiple circles or polygons per child. Give each zone a clear name.</p>
+                  </div>
                   {loading ? (
-                    <p className="text-gray-500 italic">Loading children list...</p>
+                    <p className="empty-hint">Loading devices…</p>
+                  ) : devices.length === 0 ? (
+                    <p className="empty-hint">Register a device first, then come back here.</p>
                   ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">
+                    <div className="picker-grid">
                       {devices.map((device) => (
                         <button
                           key={device.device_id}
+                          type="button"
+                          className="picker-card picker-card--boundary"
                           onClick={() => setConfigTarget(device)}
-                          className="flex items-center gap-4 p-4 border-2 border-gray-100 rounded-xl hover:border-green-500 hover:bg-green-50 transition-all text-left group"
                         >
-                          <div className="avatar bg-green-100 text-green-700 font-bold group-hover:bg-green-600 group-hover:text-white transition-colors">
-                            {device.child_name?.[0]?.toUpperCase()}
-                          </div>
+                          <span className="picker-card__avatar">{device.child_name?.[0]?.toUpperCase()}</span>
                           <div>
-                            <div className="font-bold text-gray-800">{device.child_name}</div>
-                            <div className="text-xs text-gray-400 font-mono">ID: {device.device_id}</div>
+                            <div className="picker-card__title">{device.child_name}</div>
+                            <div className="picker-card__meta picker-card__meta--mono">{device.device_id}</div>
                           </div>
                         </button>
                       ))}
                     </div>
                   )}
-                </div>
+                </>
               ) : (
-                <div>
-                  <div className="flex justify-between items-center mb-4 px-2 py-2 bg-green-50 rounded-lg border border-green-100">
-                    <span className="text-sm font-semibold text-green-800">Configuring for: {configTarget.child_name}</span>
-                    <button onClick={() => setConfigTarget(null)} className="text-xs font-bold text-gray-500 hover:text-red-500 uppercase tracking-tight">Change Child</button>
+                <>
+                  <div className="context-bar context-bar--boundary">
+                    <strong>Zones for {configTarget.child_name}</strong>
+                    <button type="button" className="btn-text" onClick={() => setConfigTarget(null)}>
+                      Change child
+                    </button>
                   </div>
-                  <Map 
-                      mode="edit" 
-                      deviceId={configTarget.device_id} 
-                      onSave={handleSaveBoundary}
-                      childName={configTarget.child_name}
-                      initialPosition={configTarget.last_lat && configTarget.last_lon ? [parseFloat(configTarget.last_lat), parseFloat(configTarget.last_lon)] : null}
+                  <Map
+                    mode="edit"
+                    deviceId={configTarget.device_id}
+                    childName={configTarget.child_name}
+                    initialPosition={
+                      configTarget.last_lat && configTarget.last_lon
+                        ? [parseFloat(configTarget.last_lat), parseFloat(configTarget.last_lon)]
+                        : null
+                    }
                   />
-                </div>
+                </>
               )}
             </article>
           )}

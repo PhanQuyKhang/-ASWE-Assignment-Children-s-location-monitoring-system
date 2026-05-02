@@ -1,25 +1,19 @@
 import api from './api';
 
-/**
- * Lấy cảnh báo mới nhất của một thiết bị cụ thể
- */
 export const getLatestAlert = async (deviceId) => {
   const response = await api.get(`/alert/latest/${deviceId}`);
-  return response.data; // Mong đợi { success: true, data: { alert_type, message, ... } }
-};
-
-/**
- * Lấy lịch sử tất cả cảnh báo của một thiết bị
- */
-export const getAlertHistory = async (deviceId) => {
-  const response = await api.get(`/alert/history/${deviceId}`);
   return response.data;
 };
 
-/**
- * Lấy toàn bộ cảnh báo của tất cả các con thuộc về User này
- */
-export const getAllUserAlerts = async () => {
-  const response = await api.get('/alert/');
+export const getAlertHistory = async (deviceId, params = {}) => {
+  const response = await api.get(`/alert/history/${deviceId}`, { params });
   return response.data;
+};
+
+export const getAllUserAlerts = async ({ limit = 30, cursor } = {}) => {
+  const response = await api.get('/alert/', { params: { limit, cursor } });
+  return {
+    alerts: response.data?.data ?? [],
+    nextCursor: response.data?.nextCursor ?? null,
+  };
 };

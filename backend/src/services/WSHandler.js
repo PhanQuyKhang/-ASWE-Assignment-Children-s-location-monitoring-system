@@ -11,7 +11,6 @@ module.exports = (io) => {
     LocalMegaphone.on('DEVICE_UPDATES', (event) => {
         try {
             if (event.isOlder) return;
-            console.log("GOO");
             const roomName = `room_device_${event.device_id}`;            
             event.timestamp = DateTime.fromJSDate(event.timestamp).toUTC().toISO();
             io.to(roomName).emit('location_update', event);
@@ -41,7 +40,10 @@ module.exports = (io) => {
     LocalMegaphone.on('OUT_OF_SIGNAL', async (event) => {
         try {
             const roomName = `room_device_${event.device_id}`;
-            event.updated_at = DateTime.fromJSDate(event.updated_at).setZone( event.timezone).toLocaleString(DateTime.DATETIME_MED);
+            const t = event.updated_at ?? event.timestamp;
+            if (t) {
+                event.updated_at = DateTime.fromJSDate(t instanceof Date ? t : new Date(t)).setZone( event.timezone).toLocaleString(DateTime.DATETIME_MED);
+            }
             io.to(roomName).emit('alert_device_out_of_signal', event);
         } catch (error) {
             console.error("Failed to process local event:", error);
@@ -60,7 +62,8 @@ module.exports = (io) => {
     };
     io.use(async (socket, next) => {
         try {
-            const token = socket.handshake.headers.token || getCookie(socket.handshake.headers.cookie,'clms_access_token');
+            const cookieName = process.env.AUTH_COOKIE_NAME || 'clms_access_token';
+            const token = socket.handshake.headers.token || getCookie(socket.handshake.headers.cookie, cookieName);
             if (!token) throw new Error("No token provided");
             
             const decoded = jwt.verify(token, process.env.JWT_SECRET);

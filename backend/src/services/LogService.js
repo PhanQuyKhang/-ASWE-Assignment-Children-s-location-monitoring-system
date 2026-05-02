@@ -25,6 +25,11 @@ const formatLogDates = (log, timezone) => {
 };
 
 
+/** ~1 m — duplicate ping detection only (GPS jitter); geofence checks use full precision elsewhere. */
+const COORD_EPS_DUP = 1e-5;
+/** Skip redundant pings: same coordinates & log time within 10s after device's last update (Traccar heartbeat / interval rules). */
+const DUPLICATE_AFTER_LAST_MS = 10_000;
+
 const LogService = {
     processLog: async (data) => { 
         const device = await DeviceModel.findbyID(data.device_id);
@@ -34,25 +39,26 @@ const LogService = {
         if (device.status == "INACTIVE"){
             throw new Error("Device inactive"); 
         }
-        
-        if (device.last_updated) {
-            const timeDiff = Math.abs(
-                data.timestamp.getTime() - new Date(device.last_updated)
-            );
-            if (
-                Number(device.last_lat) === data.latitude &&
-                Number(device.last_lon) === data.longitude &&
-                timeDiff < 10000)
-            {
-                console.log(timeDiff);
-                return; 
-            }
-        }         
-        
-        const isOlder = device.last_updated && data.timestamp <= new Date(device.last_updated);
 
-        //Emit event before create log
-        console.log("GOO");
+        const logTs = data.timestamp.getTime();
+        const lastUpMs = device.last_updated ? new Date(device.last_updated).getTime() : null;
+
+        if (lastUpMs != null) {
+            const sameLat =
+                device.last_lat != null &&
+                Math.abs(Number(device.last_lat) - data.latitude) < COORD_EPS_DUP;
+            const sameLon =
+                device.last_lon != null &&
+                Math.abs(Number(device.last_lon) - data.longitude) < COORD_EPS_DUP;
+            const dtAfterLast = logTs - lastUpMs;
+            if (sameLat && sameLon && dtAfterLast >= 0 && dtAfterLast < DUPLICATE_AFTER_LAST_MS) {
+                return;
+            }
+        }
+
+        // Newer log updates device; strictly older log timestamp does not (replay / backlog).
+        const isOlder = lastUpMs != null && logTs < lastUpMs;
+
         LocalMegaphone.emit('DEVICE_UPDATES', {
             device_id: data.device_id,
             child_name: device.child_name,
@@ -82,12 +88,10 @@ const LogService = {
 
         //Create log and update device
         //Device dc update lat_lon, update_at, device_status, boundary_status
-        const logTime = new Date(data.timestamp).getTime(); // số mili-giây của log
         if (!isOlder){
-            //check xem cái mới tạo có timestamp < now + 90s và đang noSIGNAL thì đổi thành ACTIVE
-            const now = Date.now(); // số mili-giây hiện tại
             let device_status;
-            if (device.status === "NOSIGNAL" && (now - logTime) <= 90 * 1000) {
+            // Recover from NOSIGNAL using log timeline only (any newer ping restores ACTIVE).
+            if (device.status === "NOSIGNAL") {
                 device_status = "ACTIVE";
             }
             const zone_id = zonecheck?.zone_id ?? null;
@@ -102,54 +106,35 @@ const LogService = {
                 throw new Error("Log create and update failed"); 
             }
         } else {
-        //Log cũ thì ko update device gì cả!!!
             const createdLogId = await LogModel.create(data);
             if (!createdLogId) {
                 throw new Error("Log create failed"); 
             }
         }
-            
-        //Alert or not
-        if (zonecheck){
-            const latestLogbyTime = await LogModel.getLatestbyTimeStamp(data.device_id, data.timestamp); 
-            if (latestLogbyTime){
-                const latestlogTime = new Date(latestLogbyTime.timestamp).getTime();
 
-                //Với newLog, latestLogTime chỉ có giá trị nếu ko cách nhau quá 30s
-                if (!isOlder && (logTime - latestlogTime) <= 30 * 1000){
-                    //Nếu cùng zone và cùng type thì ignore
-                    if (latestLogbyTime.zone_id == zonecheck.zone_id && latestLogbyTime.boundary_status == zonecheck.boundary_status)
-                        return;
-                }
-                //Với newLog, nếu cùng zone, cùng type là INSIDE, bất kể tgian thì ignore
-                if (latestLogbyTime.zone_id == zonecheck.zone_id && latestLogbyTime.boundary_status == zonecheck.boundary_status && zonecheck.boundary_status == "INSIDE")
-                    return;
-                //Với oldLog, latestLogTime chỉ có giá trị nếu ko cách nhau quá 30min
-                if (isOlder && (logTime - latestlogTime) <= 30*60 * 1000){
-                    //Nếu cùng zone và cùng type thì ignore
-                    if (latestLogbyTime.zone_id == zonecheck.zone_id && latestLogbyTime.boundary_status == zonecheck.boundary_status)
-                        return;
-                }
+        // Geofence alerts: only on INSIDE ↔ OUTSIDE transition vs previous stored log (by log timestamp).
+        if (zonecheck && !isOlder) {
+            const prevLog = await LogModel.getLatestbyTimeStamp(data.device_id, data.timestamp);
+            const prevInside = prevLog?.boundary_status === "INSIDE";
+            const currInside = zonecheck.boundary_status === "INSIDE";
+            if (prevInside !== currInside) {
+                LocalMegaphone.emit("DEVICE_ALERT", {
+                    user_id: device.user_id,
+                    device_id: data.device_id,
+                    child_name: device.child_name,
+                    timezone: device.timezone,
+                    zone_id: zonecheck.zone_id,
+                    zone_name: zonecheck.zone_name,
+                    latitude: data.latitude,
+                    longitude: data.longitude,
+                    battery: data.battery_level,
+                    timestamp: data.timestamp,
+                    activity_type: data.activity_type,
+                    isOlder: false,
+                    boundary_status: zonecheck.boundary_status,
+                });
             }
-            
-
-            //Tất cả các trường hợp còn lại thì đều emit sang ALERT
-            LocalMegaphone.emit('DEVICE_ALERT', {
-                device_id: data.device_id,
-                child_name: device.child_name,
-                timezone: device.timezone,
-                zone_id: zonecheck.zone_id,
-                zone_name: zonecheck.zone_name,
-                latitude: data.latitude,
-                longitude: data.longitude,
-                battery: data.battery_level,
-                timestamp: data.timestamp,
-                activity_type: data.activity_type,
-                isOlder: isOlder,
-                boundary_status: zonecheck.boundary_status,
-            });
         }
-        
 
         return true;
     },

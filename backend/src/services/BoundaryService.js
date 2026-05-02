@@ -2,42 +2,6 @@ const DeviceModel = require('../models/DeviceModel');
 const BoundaryModel = require('../models/BoundaryModel');
 const { DateTime } = require('luxon');
 const turf = require('@turf/turf');
-const LocalMegaphone = require('../services/LocalMegaphone');
-
-// --------------------
-// HELPERS
-// --------------------
-//
-const toMinutes = (t) => {
-    const [h, m] = t.split(':').map(Number);
-    return h * 60 + m;
-};
-
-const hasArrayOverlap = (a, b) => {
-    if (!a || !b) return false;
-
-    const setB = new Set(b.map(Number));
-    return a.map(Number).some(x => setB.has(x));
-};
-
-const hasTimeOverlap = (aStart, aDur, bStart, bDur) => {
-    const aS = toMinutes(aStart);
-    const bS = toMinutes(bStart);
-
-    const aD = Number(aDur);
-    const bD = Number(bDur);
-
-    if (aS < bS){
-        const distance = 1440 - bS + aS;
-        if (bD <= distance && aD + aS <= bS) return false;
-    }
-    if (aS > bS){
-        const distance = 1440 - aS + bS;
-        if (aD <= distance && bD + bS <= aS) return false;
-    }
-
-    return true;
-};
 
 // --------------------
 // DATETIME
@@ -95,59 +59,6 @@ function generateOccurrences(zone, rangeDays = 30, timezone, baseDate = new Date
     }
 
     return results;
-}
-
-// --------------------
-// SCHEDULE OVERLAP
-// --------------------
-
-function hasScheduleOverlap(newZone, activeZones, timezone) {
-    // FAST PATH
-    if (newZone.schedule_type === "ALWAYS" && activeZones.length) return true;
-
-    for (const zone of activeZones) {
-        if (!zone.is_active) continue;
-        if (zone.schedule_type === "ALWAYS") return true;
-
-        if (!hasTimeOverlap(newZone.start_time, newZone.duration, zone.start_time, zone.duration)) {
-            continue;
-        }
-
-        // SAME TYPE QUICK CHECK
-        if (zone.schedule_type === newZone.schedule_type) {
-            if (zone.schedule_type === "DAILY") {
-                return true;
-            }
-            if (zone.schedule_type === "WEEKLY") {
-                if (hasArrayOverlap(zone.days_of_week, newZone.days_of_week)) {
-                return true;
-            }
-            }
-
-            if (zone.schedule_type === "MONTHLY") {
-                if (hasArrayOverlap(zone.days_of_month, newZone.days_of_month)) {
-                return true;
-            }
-            }
-        }
-    }
-
-
-    // FALLBACK (accurate)
-    const newOcc = generateOccurrences(newZone, 30, timezone);
-    for (const zone of activeZones) {
-        if (!zone.is_active) continue;
-        const existingOcc = generateOccurrences(zone, 30, timezone);
-        for (const a of newOcc) {
-            for (const b of existingOcc) {
-                if (a.startMs < b.endMs && b.startMs < a.endMs) {
-                    return true;
-                }
-            }
-        }
-    }
-
-    return false;
 }
 
 // --------------------
@@ -309,14 +220,8 @@ const BoundaryService = {
             }
         }
 
-        // ===== EXISTING =====
-        const zones = await BoundaryModel.getZonesbyDevice(device_id);
-        if (zones.length > 0){
-            // ===== SCHEDULE =====
-            if (hasScheduleOverlap(data, zones, device.timezone)) {
-                throw new Error("Schedule overlap detected");
-            }
-        }
+        // Multiple safe zones per child (circle and/or polygon) are allowed, including several
+        // "ALWAYS" zones — overlap checks were blocking a second zone; scheduling is per-zone at check time.
 
         // ===== GEOMETRY =====
         if (type === "CIRCLE") {
@@ -337,41 +242,46 @@ const BoundaryService = {
         const zones = await BoundaryModel.getZonesbyDevice(device_id);
         if (!zones || zones.length === 0) return;
         
-        const location = turf.point([longitude, latitude])
-        for (const zone of zones){
+        const location = turf.point([longitude, latitude]);
+        let fallbackZone = null;
+        for (const zone of zones) {
             if (!zone.is_active) continue;
-            //Check if in scheduled, check for every single ACTIVE zone
             if (!isNowInSchedule(zone, timestamp, device.timezone)) {
-                continue
+                continue;
             }
-            //Check if in boundary
-            //ONLY one ACTIVE zone can be in scheduled at a time, so if found one, dump other!!!
+            if (!fallbackZone) fallbackZone = zone;
             let test_1 = false;
             let test_2 = false;
-            if (zone.type == "CIRCLE"){
-                const {center_lat, center_lon} = zone;
-                if (!center_lat || !center_lon){
-                    throw new Error ("Can not find information about zone");
+            if (zone.type == "CIRCLE") {
+                const { center_lat, center_lon } = zone;
+                if (!center_lat || !center_lon) {
+                    throw new Error("Can not find information about zone");
                 }
                 test_1 = checkCircleZonebyMath(zone, longitude, latitude);
-                if (test_1 == false){
+                if (test_1 == false) {
                     test_2 = checkCircleZonebyTurf(zone, location);
                 }
-            } else if (zone.type == "POLYGON"){
-                const {points} = zone;
-                if (!points || points.length === 0){
-                    throw new Error ("Can not find information about zone");
+            } else if (zone.type == "POLYGON") {
+                const { points } = zone;
+                if (!points || points.length === 0) {
+                    throw new Error("Can not find information about zone");
                 }
                 test_1 = checkPolygonZonebyMath(points, longitude, latitude);
-                if (test_1 == false){
+                if (test_1 == false) {
                     test_2 = checkPolygonZonebyTurf(points, location);
                 }
             }
             if (test_1 || test_2) {
-                return {zone_id : zone.zone_id, zone_name : zone.zone_name, boundary_status : "INSIDE"}; 
+                return { zone_id: zone.zone_id, zone_name: zone.zone_name, boundary_status: "INSIDE" };
             }
-
-            return {zone_id : zone.zone_id, zone_name : zone.zone_name, boundary_status : "OUTSIDE"};         }
+        }
+        if (fallbackZone) {
+            return {
+                zone_id: fallbackZone.zone_id,
+                zone_name: fallbackZone.zone_name,
+                boundary_status: "OUTSIDE",
+            };
+        }
         return null; 
     },
 
@@ -412,6 +322,56 @@ const BoundaryService = {
         }
 
         return await BoundaryModel.deleteZonebyID(zone_id);
+    },
+
+    async updateZone(user_id, zone_id, data) {
+        if (!zone_id) {
+            throw new Error("zone_id is required");
+        }
+
+        const existing = await BoundaryModel.getZonebyID(zone_id);
+        if (!existing) {
+            throw new Error("Zone not found");
+        }
+
+        const device = await DeviceModel.findbyID(existing.device_id);
+        if (!device) {
+            throw new Error("Device not found");
+        }
+        if (device.user_id !== user_id) {
+            throw new Error("Unauthorized: cannot update this zone");
+        }
+        if (device.status === "INACTIVE") {
+            throw new Error("Device inactive");
+        }
+
+        if (existing.type !== data.type) {
+            throw new Error("Cannot change zone type; delete and create a new zone");
+        }
+
+        const { specific_date } = data;
+        if (specific_date) {
+            const now = DateTime.now().setZone(device.timezone).startOf('day');
+            const dt = DateTime.fromISO(specific_date, { zone: device.timezone }).startOf('day');
+
+            if (!dt.isValid) {
+                throw new Error("Invalid specific_date");
+            }
+
+            if (dt < now) {
+                throw new Error("Date cannot be in the past");
+            }
+        }
+
+        if (data.type === "CIRCLE") {
+            if (data.radius < 3) {
+                throw new Error("Radius must be >= 3 meters");
+            }
+        } else {
+            validatePolygon(data.points);
+        }
+
+        return await BoundaryModel.updateZone(zone_id, data);
     }
 };
 

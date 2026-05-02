@@ -25,21 +25,19 @@ const AlertService = {
             if (data.boundary_status == "INSIDE") type_alert = "ENTER"
         }
         if (type_alert == "OUT_OF_SIGNAL"){
-            //Không cần sợ bị nhiều alrt vì cron chỉ chạy khi quá 2min
-            //Mỗi lần NOSIGNAL, 1 lần báo thôi!!!
-        } else if (!data.isOlder && data.boundary_status == "OUTSIDE"){
-            const lastAlert = await AlertModel.getLatestByDevice(data.device_id);
-            //If pass 30s, new log come, and the parent has read the previos alrt then dont spamm (they already knows)
-            if (lastAlert && lastAlert.zone_id == data.zone_id && lastAlert.is_read == true ) return;
-        }  
+            // One transition ACTIVE→NOSIGNAL per cron flip; dedup is at DB/cron level.
+        }
         //After alert service done analyse then can emit to WS with new LOG, old alrt do not WS
 
         const newAlert = await AlertModel.createAlert(data, type_alert);
         if (!newAlert){
             throw new Error("Can not create new alert"); 
         }
+        const owner = await DeviceModel.findbyID(data.device_id);
+        const user_id = data.user_id ?? owner?.user_id;
         if (!data.isOlder){
             LocalMegaphone.emit(type_alert, {
+                user_id,
                 device_id: data.device_id,
                 child_name: data.child_name,
                 timezone: data.timezone,
@@ -132,8 +130,8 @@ const AlertService = {
                 ? alerts[alerts.length - 1].created_at.toISOString()
                 : null;
 
-        const formattedAlerts = alerts.map(alerts =>
-            formatAlertDates(alerts, alerts.timezone)
+        const formattedAlerts = alerts.map((a) =>
+            formatAlertDates(a, a.device_timezone)
         );
 
         
@@ -149,13 +147,6 @@ const AlertService = {
 LocalMegaphone.on('DEVICE_ALERT', async (event) => {
     try {
         await AlertService.processAlert(event, null);  
-    } catch (error) {
-        console.error("Failed to process local event:", error);
-    }
-});
-LocalMegaphone.on('DEVICE_LOST_SIGNAL', async (event) => {
-    try {
-        await AlertService.processAlert(event, "OUT_OF_SIGNAL");  
     } catch (error) {
         console.error("Failed to process local event:", error);
     }
