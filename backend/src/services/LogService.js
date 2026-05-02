@@ -28,7 +28,7 @@ const formatLogDates = (log, timezone) => {
 /** ~1 m — duplicate ping detection only (GPS jitter); geofence checks use full precision elsewhere. */
 const COORD_EPS_DUP = 1e-5;
 /** Skip redundant pings: same coordinates & log time within 10s after device's last update (Traccar heartbeat / interval rules). */
-const DUPLICATE_AFTER_LAST_MS = 10_000;
+const DUPLICATE_AFTER_LAST_MS = 30_000;
 const MIN_BATTERY_LEVEL = 10.0;
 const MAX_DIFF_MS = 2 * 60 * 1000;
 
@@ -205,44 +205,46 @@ const LogService = {
         return latestLog;
     },
 
-    getLogsbyDevice: async (device_id, user_id, options = {}) => {
-        const { limit = 20, cursor } = options;
+    getLogsByDevice: async (device_id, user_id, options = {}) => {
+        const { from, to, limit = 100, cursor } = options;
 
         if (!validateUUID(device_id)) {
             throw new Error("Invalid UUID");
         }
 
-        const safeLimit = Math.min(limit, 50);
-
         const device = await DeviceModel.findbyID(device_id);
         if (!device) {
             throw new Error("Device not found");
         }
+
         if (device.user_id !== user_id) {
-            throw new Error("Not authorized to view this device");
+            throw new Error("Not authorized");
         }
+
+        // 🔒 safety limit
+        const safeLimit = Math.min(limit, 200);
+
+        const fromDate = from ? new Date(from) : null;
+        const toDate = to ? new Date(to) : null;
+        const cursorDate = cursor ? new Date(cursor) : null;
 
         const logs = await LogModel.getLogsByDevice(
             device_id,
+            fromDate,
+            toDate,
             safeLimit,
-            cursor ? new Date(cursor) : null
+            cursorDate
         );
 
         const nextCursor =
-            logs.length > 0
+            logs.length === safeLimit
                 ? logs[logs.length - 1].timestamp.toISOString()
                 : null;
 
-        const formattedLogs = logs.map(log =>
-            formatLogDates(log, device.timezone)
-        );
-
-        
-
         return {
-            logs: formattedLogs,
-            nextCursor,
-        };
+            logs,
+            nextCursor
+            };
     }
       
 };
