@@ -61,17 +61,19 @@ const LogService = {
         // Newer log updates device; strictly older log timestamp does not (replay / backlog).
         const isOlder = lastUpMs != null && logTs < lastUpMs;
 
-        LocalMegaphone.emit('DEVICE_UPDATES', {
-            device_id: data.device_id,
-            child_name: device.child_name,
-            timezone: device.timezone,
-            latitude: data.latitude,
-            longitude: data.longitude,
-            battery: data.battery_level,
-            timestamp: data.timestamp,
-            activity_type: data.activity_type,
-            isOlder: isOlder
-        });
+        if (!isOlder){
+            LocalMegaphone.emit('DEVICE_UPDATES', {
+                device_id: data.device_id,
+                child_name: device.child_name,
+                timezone: device.timezone,
+                latitude: data.latitude,
+                longitude: data.longitude,
+                battery: data.battery_level,
+                timestamp: data.timestamp,
+                activity_type: data.activity_type,
+                isOlder: isOlder
+            });
+        }
 
         //Check for battery status
         if (!isOlder && data.battery_level <= MIN_BATTERY_LEVEL){
@@ -104,15 +106,16 @@ const LogService = {
 
         //Create log and update device
         //Device dc update lat_lon, update_at, device_status, boundary_status
+        const zone_id = zonecheck?.zone_id ?? null;
+        const zone_name = zonecheck?.zone_name ?? null;
+        const boundary_status = zonecheck?.boundary_status ?? null;
         if (!isOlder){
             let device_status;
             // Recover from NOSIGNAL using log timeline only (any newer ping restores ACTIVE).
             if (device.status === "NOSIGNAL") {
                 device_status = "ACTIVE";
             }
-            const zone_id = zonecheck?.zone_id ?? null;
-            const zone_name = zonecheck?.zone_name ?? null;
-            const boundary_status = zonecheck?.boundary_status ?? null;
+            
             const [createdLogId, updateResult] = await Promise.all([
                 LogModel.create(data, zone_id, zone_name, boundary_status),
                 
@@ -122,7 +125,7 @@ const LogService = {
                 throw new Error("Log create and update failed"); 
             }
         } else {
-            const createdLogId = await LogModel.create(data);
+            const createdLogId = await LogModel.create(data, zone_id, zone_name, boundary_status);
             if (!createdLogId) {
                 throw new Error("Log create failed"); 
             }
