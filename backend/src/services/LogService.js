@@ -29,6 +29,8 @@ const formatLogDates = (log, timezone) => {
 const COORD_EPS_DUP = 1e-5;
 /** Skip redundant pings: same coordinates & log time within 10s after device's last update (Traccar heartbeat / interval rules). */
 const DUPLICATE_AFTER_LAST_MS = 10_000;
+const MIN_BATTERY_LEVEL = 10.0;
+const MAX_DIFF_MS = 2 * 60 * 1000;
 
 const LogService = {
     processLog: async (data) => { 
@@ -70,6 +72,20 @@ const LogService = {
             activity_type: data.activity_type,
             isOlder: isOlder
         });
+
+        //Check for battery status
+        if (!isOlder && data.battery_level <= MIN_BATTERY_LEVEL){
+            LocalMegaphone.emit('DEVICE_BATTERY_LOW', {
+                device_id: data.device_id,
+                child_name: device.child_name,
+                timezone: device.timezone,
+                latitude: data.latitude,
+                longitude: data.longitude,
+                battery: data.battery_level,
+                timestamp: data.timestamp,
+                activity_type: data.activity_type,
+            });
+        }
 
         const zonecheck = await BoundaryService.check(
             {
@@ -113,11 +129,40 @@ const LogService = {
         }
 
         // Geofence alerts: only on INSIDE ↔ OUTSIDE transition vs previous stored log (by log timestamp).
-        if (zonecheck && !isOlder) {
+        //OLD LOGIC IS NOT GOOD!!! So i added a zone check, and time check
+        //WHAT IF the last log is OUTSIDE but different zone
+        //WHAT IF the last log is OUTSIDE but it is yesterday?? 2 days ago?? bla bla
+        //old log come still create alert, but dont send through WS only
+        if (zonecheck) {
             const prevLog = await LogModel.getLatestbyTimeStamp(data.device_id, data.timestamp);
-            const prevInside = prevLog?.boundary_status === "INSIDE";
+
+            //Missing
+            const isNoPrev = !prevLog;
+            const isMissingState =  prevLog && (prevLog.boundary_status == null || prevLog.zone_id == null);
+
+            //Too old log so not reliable
+            const prevTime = prevLog?.timestamp ? Date.parse(prevLog.timestamp) : null;
+            const diff = prevTime ? (logTs - prevTime) : null;
+            const isTooOld = prevTime != null && diff > MAX_DIFF_MS;
+
+            //Do toggle?
+            const prevInside = prevLog?.boundary_status === "INSIDE"; //boundary_status could be null
             const currInside = zonecheck.boundary_status === "INSIDE";
-            if (prevInside !== currInside) {
+            const isBoundaryChanged = prevLog && (prevInside !== currInside);
+            
+            //Zone change?
+            const prevZone = prevLog?.zone_id; //zone_id could be null
+            const currZone = zonecheck.zone_id;
+            const isZoneChanged = prevLog && (prevZone !== currZone);
+
+
+            if (
+                isNoPrev ||
+                isMissingState ||
+                isTooOld ||
+                isBoundaryChanged ||
+                isZoneChanged
+            ) {
                 LocalMegaphone.emit("DEVICE_ALERT", {
                     user_id: device.user_id,
                     device_id: data.device_id,
@@ -130,7 +175,7 @@ const LogService = {
                     battery: data.battery_level,
                     timestamp: data.timestamp,
                     activity_type: data.activity_type,
-                    isOlder: false,
+                    isOlder: isOlder,
                     boundary_status: zonecheck.boundary_status,
                 });
             }
