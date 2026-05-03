@@ -8,6 +8,9 @@ import { toast } from 'sonner';
  */
 export default function ParentRealtimeToasts({ devices = [] }) {
   const outToastByDeviceRef = useRef(new Map());
+  const devicesRef = useRef(devices);
+  devicesRef.current = devices;
+
   const deviceKey = useMemo(
     () =>
       devices
@@ -25,6 +28,7 @@ export default function ParentRealtimeToasts({ devices = [] }) {
     const socket = io(apiBase, { withCredentials: true, transports: ['polling', 'websocket'] });
 
     const onEnter = (data) => {
+      if (!devicesRef.current.some((d) => d.device_id === data.device_id)) return;
       const tid = outToastByDeviceRef.current.get(data.device_id);
       if (tid) {
         toast.dismiss(tid);
@@ -36,6 +40,7 @@ export default function ParentRealtimeToasts({ devices = [] }) {
     };
 
     const onExit = (data) => {
+      if (!devicesRef.current.some((d) => d.device_id === data.device_id)) return;
       const id = toast.error('Left safe zone', {
         description: `${data.child_name || 'Child'} left ${data.zone_name || 'the zone'}`,
         duration: Infinity,
@@ -49,6 +54,7 @@ export default function ParentRealtimeToasts({ devices = [] }) {
     };
 
     const onSignal = (data) => {
+      if (!devicesRef.current.some((d) => d.device_id === data.device_id)) return;
       toast.warning('Signal lost', {
         description: `Lost connection to ${data.child_name || 'Child'}'s device.`,
       });

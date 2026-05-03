@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { addDevice } from '../services/deviceService';
+import TimezoneSelect from './TimezoneSelect';
 
 function defaultTimezone() {
   try {
@@ -9,23 +10,11 @@ function defaultTimezone() {
   }
 }
 
-const ASIA_TIMEZONES = [
-  { label: 'Vietnam (Asia/Ho_Chi_Minh)', value: 'Asia/Ho_Chi_Minh' },
-  { label: 'Thailand (Asia/Bangkok)', value: 'Asia/Bangkok' },
-  { label: 'Singapore (Asia/Singapore)', value: 'Asia/Singapore' },
-  { label: 'Indonesia - Jakarta (Asia/Jakarta)', value: 'Asia/Jakarta' },
-  { label: 'Philippines (Asia/Manila)', value: 'Asia/Manila' },
-  { label: 'Malaysia (Asia/Kuala_Lumpur)', value: 'Asia/Kuala_Lumpur' },
-  { label: 'China (Asia/Shanghai)', value: 'Asia/Shanghai' },
-  { label: 'Japan (Asia/Tokyo)', value: 'Asia/Tokyo' },
-  { label: 'South Korea (Asia/Seoul)', value: 'Asia/Seoul' },
-  { label: 'India (Asia/Kolkata)', value: 'Asia/Kolkata' },
-];
-
 export default function AddDeviceForm({ onSuccess }) {
   const initialTz = useMemo(() => defaultTimezone(), []);
   const [formData, setFormData] = useState({
     childName: '',
+    deviceId: '',
     timezone: initialTz,
   });
 
@@ -47,8 +36,12 @@ export default function AddDeviceForm({ onSuccess }) {
     try {
       const payload = {
         childName: formData.childName.trim(),
-        timezone: formData.timezone,
+        timezone: formData.timezone.trim() || initialTz,
       };
+      const trimmedId = formData.deviceId.trim();
+      if (trimmedId) {
+        payload.deviceId = trimmedId;
+      }
 
       const res = await addDevice(payload);
 
@@ -60,6 +53,7 @@ export default function AddDeviceForm({ onSuccess }) {
 
       setFormData({
         childName: '',
+        deviceId: '',
         timezone: initialTz,
       });
 
@@ -81,7 +75,7 @@ export default function AddDeviceForm({ onSuccess }) {
   return (
     <div className="add-device-form">
       <p className="add-device-form__hint">
-        The server will automatically generate a device ID after registration.
+        The server can generate a device ID for you, or paste a UUID to match Traccar Client.
       </p>
 
       {status.success && (
@@ -112,21 +106,31 @@ export default function AddDeviceForm({ onSuccess }) {
         </div>
 
         <div className="field">
+          <label htmlFor="deviceId">Device UUID (optional)</label>
+          <input
+            type="text"
+            id="deviceId"
+            name="deviceId"
+            className="font-mono text-sm"
+            placeholder="Leave empty to auto-generate"
+            value={formData.deviceId}
+            onChange={handleChange}
+            disabled={status.loading}
+          />
+        </div>
+
+        <div className="field">
           <label htmlFor="timezone">Timezone</label>
-          <select
+          <TimezoneSelect
             id="timezone"
             name="timezone"
             value={formData.timezone}
             onChange={handleChange}
-            disabled={status.loading}
             required
-          >
-            {ASIA_TIMEZONES.map((tz) => (
-              <option key={tz.value} value={tz.value}>
-                {tz.label}
-              </option>
-            ))}
-          </select>
+            disabled={status.loading}
+            aria-label="Time zone"
+          />
+          <p className="card-note">Choose your region from the list (IANA).</p>
         </div>
 
         <button
