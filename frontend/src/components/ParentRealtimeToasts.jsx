@@ -42,6 +42,11 @@ export default function ParentRealtimeToasts({ devices = [] }) {
       });
       outToastByDeviceRef.current.set(data.device_id, id);
     };
+    const onBatteryLow = (data) => {
+      toast.warning('Low battery', {
+        description: `${child}'s battery is ${data.battery_level}%`, 
+      });
+    };
 
     const onSignal = (data) => {
       toast.warning('Signal lost', {
@@ -52,6 +57,7 @@ export default function ParentRealtimeToasts({ devices = [] }) {
     socket.on('alert_device_enter_of_zone', onEnter);
     socket.on('alert_device_out_of_zone', onExit);
     socket.on('alert_device_out_of_signal', onSignal);
+    socket.on('alert_device_battery_low', onBatteryLow);
 
     return () => {
       outToastByDeviceRef.current.forEach((tid) => toast.dismiss(tid));
